@@ -214,6 +214,7 @@ def load_module_prototypes(*mod_or_prototypes, override=True):
 
     """
     global _MODULE_PROTOTYPE_MODULES, _MODULE_PROTOTYPES
+    setattr(load_module_prototypes, '_LOADED', True)
 
     def _prototypes_from_module(mod):
         """
@@ -528,7 +529,8 @@ def search_prototype(
 
     """
     # This will load the prototypes the first time they are searched
-    if not _MODULE_PROTOTYPE_MODULES:
+    loaded = getattr(load_module_prototypes, '_LOADED', False)
+    if not loaded:
         load_module_prototypes()
 
     # prototype keys are always in lowecase
