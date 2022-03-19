@@ -65,6 +65,10 @@ class ComponentHandler:
         self._set_component(component)
         self.db_names.append(component.name)
         component.at_added(self.host)
+        for tag_field_name in component.tag_field_names:
+            default_tag = type(component).__dict__[tag_field_name]._default
+            if default_tag:
+                setattr(component, tag_field_name, default_tag)
 
     def add_default(self, name):
         """
@@ -85,6 +89,10 @@ class ComponentHandler:
         self._set_component(new_component)
         self.db_names.append(name)
         new_component.at_added(self.host)
+        for tag_field_name in component.tag_field_names:
+            default_tag = type(component).__dict__[tag_field_name]._default
+            if default_tag:
+                setattr(component, tag_field_name, default_tag)
 
     def remove(self, component):
         """
@@ -100,6 +108,8 @@ class ComponentHandler:
         if component_name in self._loaded_components:
             component.at_removed(self.host)
             self.db_names.remove(component_name)
+            for tag_field_name in component.tag_field_names:
+                self.host.tags.remove()
             del self._loaded_components[component_name]
         else:
             message = f"Cannot remove {component_name} from {self.host.name} as it is not registered."
@@ -213,8 +223,13 @@ class ComponentHolderMixin(object):
             component = component_class.create(self, **values)
             component_names.append(component_name)
             self.components._loaded_components[component_name] = component
+            for tag_field_name in component.tag_field_names:
+                default_tag = type(component).__dict__[tag_field_name]._default
+                if default_tag:
+                    setattr(component, tag_field_name, default_tag)
 
         self.db.component_names = component_names
+
 
     @property
     def components(self) -> ComponentHandler:
