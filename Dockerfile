@@ -39,12 +39,17 @@ libffi-dev openssl-dev zlib-dev gettext
 # add the files required for pip installation
 COPY ./setup.py /usr/src/evennia/
 COPY ./requirements.txt /usr/src/evennia/
+COPY ./scipy-1.8.0-cp310-cp310-linux_x86_64.whl /usr/src/evennia/
+COPY ./numpy-1.22.3-cp310-cp310-linux_x86_64.whl /usr/src/evennia/
 COPY ./evennia/VERSION.txt /usr/src/evennia/evennia/
 COPY ./bin /usr/src/evennia/bin/
 
 # install dependencies
 RUN pip install --upgrade pip && pip install -e /usr/src/evennia --trusted-host pypi.python.org
 RUN pip install cryptography pyasn1 service_identity
+RUN pip install /usr/src/evennia/numpy-1.22.3-cp310-cp310-linux_x86_64.whl
+RUN pip install /usr/src/evennia/scipy-1.8.0-cp310-cp310-linux_x86_64.whl
+
 
 # add the project source; this should always be done after all
 # expensive operations have completed to avoid prematurely
