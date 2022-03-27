@@ -89,10 +89,10 @@ class ComponentHandler:
         self._set_component(new_component)
         self.db_names.append(name)
         new_component.at_added(self.host)
-        for tag_field_name in component.tag_field_names:
-            default_tag = type(component).__dict__[tag_field_name]._default
+        for tag_field_name in new_component.tag_field_names:
+            default_tag = type(new_component).__dict__[tag_field_name]._default
             if default_tag:
-                setattr(component, tag_field_name, default_tag)
+                setattr(new_component, tag_field_name, default_tag)
 
     def remove(self, component):
         """
