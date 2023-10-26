@@ -342,7 +342,7 @@ def get_and_merge_cmdsets(caller, session, account, obj, callertype, raw_string)
                     # the no_superuser_bypass must be True)
                     local_obj_cmdsets = yield list(
                         chain.from_iterable(
-                            lobj.cmdset.cmdset_stack
+                            (cmdset for cmdset in lobj.cmdset.cmdset_stack if getattr(cmdset, 'shared', True))
                             for lobj in local_objlist
                             if (
                                 lobj.cmdset.current

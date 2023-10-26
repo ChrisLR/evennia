@@ -73,6 +73,21 @@ class ComponentHandler:
         component.at_added(self.host)
         self.host.signals.add_object_listeners_and_responders(component)
 
+    def _add_class(self, component):
+        """
+        Method to add a Component to a host.
+        It caches the loaded component and appends its name to the host's component name list.
+        It will also call the component's 'at_added' method, passing its host.
+
+        Args:
+            component (object): The 'loaded' component instance to add.
+
+        """
+        self._set_component(component)
+        self._add_component_tags(component)
+        component.at_added(self.host)
+        self.host.signals.add_object_listeners_and_responders(component)
+
     def add_default(self, name):
         """
         Method to add a Component initialized to default values on a host.
@@ -125,6 +140,9 @@ class ComponentHandler:
             self._remove_component_tags(component)
             component.at_removed(self.host)
             self.db_names.remove(component_name)
+            if component.cmd_set:
+                # TODO Normalize removing cmdsets
+                self.host.cmdset.remove(component.cmd_set)
             self.host.signals.remove_object_listeners_and_responders(component)
             del self._loaded_components[component_name]
         else:
@@ -152,6 +170,8 @@ class ComponentHandler:
         instance.at_removed(self.host)
         self.host.signals.remove_object_listeners_and_responders(instance)
         self.db_names.remove(name)
+        if instance.cmd_set:
+            self.host.cmdset.remove(instance.cmd_set)
 
         del self._loaded_components[name]
 
@@ -269,8 +289,7 @@ class ComponentHolderMixin:
             component_class = components.get_component_class(component_name)
             component = component_class.create(self, **values)
             component_names.append(component_name)
-            self.components._loaded_components[component_name] = component
-            self.signals.add_object_listeners_and_responders(component)
+            self.components._add_class(component)
 
         self.db.component_names = component_names
         self.signals.trigger("at_basetype_setup")

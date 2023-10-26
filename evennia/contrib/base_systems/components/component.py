@@ -5,6 +5,8 @@ This file contains the base class to inherit for creating new components.
 """
 import itertools
 
+from evennia.commands.cmdset import CmdSet
+
 
 class Component:
     """
@@ -14,7 +16,11 @@ class Component:
     Each Component must supply the name, it is used as a slot name but also part of the attribute key.
     """
 
+    __slots__ = ('host',)
+
     name = ""
+
+    cmd_set: CmdSet = None
 
     def __init__(self, host=None):
         assert self.name, "All Components must have a Name"
@@ -88,14 +94,14 @@ class Component:
             host (object): The host typeclass instance
 
         """
+        if self.host and self.host != host:
+            raise ComponentRegisterError("Components must not register twice!")
 
-        if self.host:
-            if self.host == host:
-                return
-            else:
-                raise ComponentRegisterError("Components must not register twice!")
+        if self.cmd_set:
+            self.host.cmdset.add(self.cmd_set)
 
         self.host = host
+
 
     def at_removed(self, host):
         """
@@ -107,6 +113,11 @@ class Component:
         """
         if host != self.host:
             raise ComponentRegisterError("Component attempted to remove from the wrong host.")
+
+        if self.cmd_set:
+            print("WATTTTTTTTTTTTTTTTTTTTTTTTTT")
+            self.host.cmdset.remove(self.cmd_set)
+
         self.host = None
 
     @property
