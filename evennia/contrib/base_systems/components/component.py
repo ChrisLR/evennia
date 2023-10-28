@@ -115,7 +115,6 @@ class Component:
             raise ComponentRegisterError("Component attempted to remove from the wrong host.")
 
         if self.cmd_set:
-            print("WATTTTTTTTTTTTTTTTTTTTTTTTTT")
             self.host.cmdset.remove(self.cmd_set)
 
         self.host = None
