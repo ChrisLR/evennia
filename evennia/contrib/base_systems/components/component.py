@@ -23,6 +23,9 @@ class BaseComponent(type):
         elif not component_slot:
             raise ValueError(f"A component_slot is required for {new_type}")
 
+        if component_key in COMPONENT_LISTING:
+            raise ValueError(f"Component key {component_key} is a duplicate, must be unique.")
+
         COMPONENT_LISTING[component_key] = new_type
 
         return new_type

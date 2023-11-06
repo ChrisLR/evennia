@@ -29,7 +29,7 @@ class ComponentProperty:
         self.values = kwargs
 
     def __get__(self, instance, owner):
-        component = instance.components.get_by_slot(self.component_key)
+        component = instance.components.get_by_key(self.component_key)
         return component
 
     def __set__(self, instance, value):
@@ -143,6 +143,9 @@ class ComponentHandler:
         for tag_field_name in component.tag_field_names:
             delattr(component, tag_field_name)
 
+    def get_by_key(self, component_key):
+        return self._loaded_components.get(component_key)
+
     def get_by_slot(self, slot_key) -> components.Component | None:
         """
         Method to retrieve a cached Component instance by its name.
@@ -189,8 +192,10 @@ class ComponentHandler:
         """
         Sets the loaded component in this instance.
         """
+        component_key = component.get_component_key()
         slot_key = component.get_component_slot()
         self._loaded_components[slot_key] = component
+        self._loaded_components[component_key] = component
         self.host.signals.add_object_listeners_and_responders(component)
 
     @property
