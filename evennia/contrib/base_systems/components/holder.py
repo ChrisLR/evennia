@@ -5,7 +5,7 @@ This file contains the classes that allow a typeclass to use components.
 """
 
 from evennia.contrib.base_systems import components
-from evennia.contrib.base_systems.components import signals
+from evennia.contrib.base_systems.components import signals, exceptions
 
 
 class ComponentProperty:
@@ -17,19 +17,19 @@ class ComponentProperty:
     Defaults can be overridden for this typeclass by passing kwargs
     """
 
-    def __init__(self, component_name, **kwargs):
+    def __init__(self, component_key, **kwargs):
         """
         Initializes the descriptor
 
         Args:
-            component_name (str): The name of the component
+            component_key (str): The key of the component
             **kwargs (any): Key=Values overriding default values of the component
         """
-        self.component_name = component_name
+        self.component_key = component_key
         self.values = kwargs
 
     def __get__(self, instance, owner):
-        component = instance.components.get(self.component_name)
+        component = instance.components.get_by_slot(self.component_key)
         return component
 
     def __set__(self, instance, value):
@@ -43,7 +43,7 @@ class ComponentProperty:
             class_components = list(getattr(owner, "_class_components", []))
             setattr(owner, "_class_components", class_components)
 
-        class_components.append((self.component_name, self.values))
+        class_components.append((self.component_key, self.values))
 
 
 class ComponentHandler:
@@ -57,7 +57,7 @@ class ComponentHandler:
         self.host = host
         self._loaded_components = {}
 
-    def add(self, component):
+    def add(self, component: components.Component):
         """
         Method to add a Component to a host.
         It caches the loaded component and appends its name to the host's component name list.
@@ -67,65 +67,28 @@ class ComponentHandler:
             component (object): The 'loaded' component instance to add.
 
         """
-        self._set_component(component)
-        self.db_names.append(component.name)
-        self._add_component_tags(component)
-        component.at_added(self.host)
-        self.host.signals.add_object_listeners_and_responders(component)
-
-    def _add_class(self, component):
-        """
-        Method to add a Component to a host.
-        It caches the loaded component and appends its name to the host's component name list.
-        It will also call the component's 'at_added' method, passing its host.
-
-        Args:
-            component (object): The 'loaded' component instance to add.
-
-        """
+        component_key = component.get_component_key()
+        self.db_keys.append(component_key)
         self._set_component(component)
         self._add_component_tags(component)
         component.at_added(self.host)
-        self.host.signals.add_object_listeners_and_responders(component)
 
-    def add_default(self, name):
+    def add_default(self, key):
         """
         Method to add a Component initialized to default values on a host.
-        It will retrieve the proper component and instanciate it with 'default_create'.
+        It will retrieve the proper component and instantiate it with 'default_create'.
         It will cache this new component and add it to its list.
         It will also call the component's 'at_added' method, passing its host.
 
         Args:
-            name (str): The name of the component class to add.
+            key (str): The key of the component class to add.
 
         """
-        component = components.get_component_class(name)
-        if not component:
-            raise ComponentDoesNotExist(f"Component {name} does not exist.")
+        component_class = components.get_component_class(key)
+        component_instance = component_class.default_create(self.host)
+        self.add(component_instance)
 
-        new_component = component.default_create(self.host)
-        self._set_component(new_component)
-        self.db_names.append(name)
-        self._add_component_tags(new_component)
-        new_component.at_added(self.host)
-        self.host.signals.add_object_listeners_and_responders(new_component)
-
-    def _add_component_tags(self, component):
-        """
-        Private method that adds the Tags set on a Component via TagFields
-        It will also add the name of the component so objects can be filtered
-        by the components the implement.
-
-        Args:
-            component (object): The component instance that is added.
-        """
-        self.host.tags.add(component.name, category="components")
-        for tag_field_name in component.tag_field_names:
-            default_tag = type(component).__dict__[tag_field_name]._default
-            if default_tag:
-                setattr(component, tag_field_name, default_tag)
-
-    def remove(self, component):
+    def remove(self, component: components.Component):
         """
         Method to remove a component instance from a host.
         It removes the component from the cache and listing.
@@ -135,47 +98,40 @@ class ComponentHandler:
             component (object): The component instance to remove.
 
         """
-        component_name = component.name
-        if component_name in self._loaded_components:
-            self._remove_component_tags(component)
-            component.at_removed(self.host)
-            self.db_names.remove(component_name)
-            if component.cmd_set:
-                # TODO Normalize removing cmdsets
-                self.host.cmdset.remove(component.cmd_set)
-            self.host.signals.remove_object_listeners_and_responders(component)
-            del self._loaded_components[component_name]
-        else:
+        slot_key = component.get_component_slot()
+        if not self.has_slot(slot_key):
             message = (
-                f"Cannot remove {component_name} from {self.host.name} as it is not registered."
+                f"Cannot remove {slot_key} from {self.host.name} as it is not registered."
             )
-            raise ComponentIsNotRegistered(message)
+            raise exceptions.ComponentIsNotRegistered(message)
 
-    def remove_by_name(self, name):
+        component.at_removed(self.host)
+        if component.cmd_set:
+            self.host.cmdset.remove(component.cmd_set)
+
+        self._remove_component_tags(component)
+        self.host.signals.remove_object_listeners_and_responders(component)
+        self.db_keys.remove(slot_key)
+        del self._loaded_components[slot_key]
+
+    def remove_by_slot_key(self, slot_key):
         """
         Method to remove a component instance from a host.
         It removes the component from the cache and listing.
         It will call the component's 'at_removed' method.
 
         Args:
-            name (str): The name of the component to remove.
+            slot_key (str): The slot_key of the component to remove.
 
         """
-        instance = self.get(name)
+        instance = self.get_by_slot(slot_key)
         if not instance:
-            message = f"Cannot remove {name} from {self.host.name} as it is not registered."
-            raise ComponentIsNotRegistered(message)
+            message = f"Cannot remove {slot_key} from {self.host.name} as it is not registered."
+            raise exceptions.ComponentIsNotRegistered(message)
 
-        self._remove_component_tags(instance)
-        instance.at_removed(self.host)
-        self.host.signals.remove_object_listeners_and_responders(instance)
-        self.db_names.remove(name)
-        if instance.cmd_set:
-            self.host.cmdset.remove(instance.cmd_set)
+        self.remove(instance)
 
-        del self._loaded_components[name]
-
-    def _remove_component_tags(self, component):
+    def _remove_component_tags(self, component: components.Component):
         """
         Private method that will remove the Tags set on a Component via TagFields
         It will also remove the component name tag.
@@ -183,29 +139,29 @@ class ComponentHandler:
         Args:
             component (object): The component instance that is removed.
         """
-        self.host.tags.remove(component.name, category="components")
+        self.host.tags.remove(component.get_component_key(), category="components")
         for tag_field_name in component.tag_field_names:
             delattr(component, tag_field_name)
 
-    def get(self, name):
+    def get_by_slot(self, slot_key) -> components.Component | None:
         """
         Method to retrieve a cached Component instance by its name.
 
         Args:
-            name (str): The name of the component to retrieve.
+            slot_key (str): The slot key of the component to retrieve.
 
         """
-        return self._loaded_components.get(name)
+        return self._loaded_components.get(slot_key)
 
-    def has(self, name):
+    def has_slot(self, slot_key: str) -> bool:
         """
         Method to check if a component is registered and ready.
 
         Args:
-            name (str): The name of the component.
+            slot_key (str): The name of the component.
 
         """
-        return name in self._loaded_components
+        return slot_key in self._loaded_components
 
     def initialize(self):
         """
@@ -214,38 +170,65 @@ class ComponentHandler:
         prototype class that can be found from this listing.
 
         """
-        component_names = self.db_names
-        if not component_names:
+        component_keys = self.db_keys
+        if not component_keys:
             return
 
-        for component_name in component_names:
-            component = components.get_component_class(component_name)
+        for component_key in component_keys:
+            component = components.get_component_class(component_key)
             if component:
                 component_instance = component.load(self.host)
                 self._set_component(component_instance)
-                self.host.signals.add_object_listeners_and_responders(component_instance)
             else:
                 message = (
-                    f"Could not initialize runtime component {component_name} of {self.host.name}"
+                    f"Could not initialize runtime component {component_key} of {self.host.name}"
                 )
-                raise ComponentDoesNotExist(message)
+                raise exceptions.ComponentDoesNotExist(message)
 
     def _set_component(self, component):
-        self._loaded_components[component.name] = component
+        """
+        Sets the loaded component in this instance.
+        """
+        slot_key = component.get_component_slot()
+        self._loaded_components[slot_key] = component
+        self.host.signals.add_object_listeners_and_responders(component)
 
     @property
-    def db_names(self):
+    def db_keys(self):
         """
-        Property shortcut to retrieve the registered component names
+        Property shortcut to retrieve the registered component keys
 
         Returns:
-            component_names (iterable): The name of each component that is registered
+            component_names (iterable): The key of each component that is registered
 
         """
-        return self.host.attributes.get("component_names")
+        component_keys = self.host.attributes.get("component_keys")
+        if component_keys is None:
+            self.host.db.component_keys = []
+            component_keys = self.host.db.component_keys
+            if legacy_names := self.host.attributes.get("component_names"):
+                component_keys.extend(legacy_names)
 
-    def __getattr__(self, name):
-        return self.get(name)
+        return component_keys
+
+    def _add_component_tags(self, component: components.Component):
+        """
+        Private method that adds the Tags set on a Component via TagFields
+        It will also add the name of the component so objects can be filtered
+        by the components the implement.
+
+        Args:
+            component (object): The component instance that is added.
+        """
+        slot_key = component.get_component_slot()
+        self.host.tags.add(slot_key, category="components")
+        for tag_field_name in component.tag_field_names:
+            default_tag = type(component).__dict__[tag_field_name]._default
+            if default_tag:
+                setattr(component, tag_field_name, default_tag)
+
+    def __getattr__(self, slot_key):
+        return self.get_by_slot(slot_key)
 
 
 class ComponentHolderMixin:
@@ -281,26 +264,15 @@ class ComponentHolderMixin:
         components that were set on the typeclass using ComponentProperty.
         """
         super().basetype_setup()
-        component_names = []
         setattr(self, "_component_handler", ComponentHandler(self))
         setattr(self, "_signal_handler", signals.SignalsHandler(self))
         class_components = getattr(self, "_class_components", ())
-        for component_name, values in class_components:
-            component_class = components.get_component_class(component_name)
+        for component_key, values in class_components:
+            component_class = components.get_component_class(component_key)
             component = component_class.create(self, **values)
-            component_names.append(component_name)
-            self.components._add_class(component)
+            self.components.add(component)
 
-        self.db.component_names = component_names
         self.signals.trigger("at_basetype_setup")
-
-    def basetype_posthook_setup(self):
-        """
-        Method that add component related tags that were set using ComponentProperty.
-        """
-        super().basetype_posthook_setup()
-        for component in self.components._loaded_components.values():
-            self.components._add_component_tags(component)
 
     @property
     def components(self) -> ComponentHandler:
@@ -323,11 +295,3 @@ class ComponentHolderMixin:
     @property
     def signals(self) -> signals.SignalsHandler:
         return getattr(self, "_signal_handler", None)
-
-
-class ComponentDoesNotExist(Exception):
-    pass
-
-
-class ComponentIsNotRegistered(Exception):
-    pass

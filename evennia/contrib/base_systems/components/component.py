@@ -6,9 +6,29 @@ This file contains the base class to inherit for creating new components.
 import itertools
 
 from evennia.commands.cmdset import CmdSet
+from evennia.contrib.base_systems.components import COMPONENT_LISTING, exceptions
 
 
-class Component:
+class BaseComponent(type):
+    @classmethod
+    def __new__(cls, *args):
+        new_type = super().__new__(*args)
+        component_key = getattr(new_type, "component_key", None)
+        component_slot = getattr(new_type, "component_slot", None)
+        if not component_key and not component_slot:
+            legacy_name = getattr(new_type, "name", None)
+            component_key = legacy_name
+        elif not component_key:
+            raise ValueError(f"A component_key is required for {new_type}")
+        elif not component_slot:
+            raise ValueError(f"A component_slot is required for {new_type}")
+
+        COMPONENT_LISTING[component_key] = new_type
+
+        return new_type
+
+
+class Component(metaclass=BaseComponent):
     """
     This is the base class for components.
     Any component must inherit from this class to be considered for usage.
@@ -18,13 +38,25 @@ class Component:
 
     __slots__ = ('host',)
 
-    name = ""
+    component_key = ""
+    component_slot = ""
 
     cmd_set: CmdSet = None
 
     def __init__(self, host=None):
-        assert self.name, "All Components must have a Name"
+        assert self.component_slot and self.component_key or getattr(self, 'name', None),\
+            "All Components must have a slot and a key"
         self.host = host
+
+    @classmethod
+    def get_component_key(cls) -> str:
+        key = cls.component_key
+        return key if key else getattr(cls, "name", "")
+
+    @classmethod
+    def get_component_slot(cls) -> str:
+        slot_key = cls.component_slot
+        return slot_key if slot_key else getattr(cls, "name", "")
 
     @classmethod
     def default_create(cls, host):
@@ -95,13 +127,12 @@ class Component:
 
         """
         if self.host and self.host != host:
-            raise ComponentRegisterError("Components must not register twice!")
+            raise exceptions.ComponentRegisterError("Components must not register twice!")
 
         if self.cmd_set:
             self.host.cmdset.add(self.cmd_set)
 
         self.host = host
-
 
     def at_removed(self, host):
         """
@@ -112,7 +143,7 @@ class Component:
 
         """
         if host != self.host:
-            raise ComponentRegisterError("Component attempted to remove from the wrong host.")
+            raise ValueError("Component attempted to remove from the wrong host.")
 
         if self.cmd_set:
             self.host.cmdset.remove(self.cmd_set)
@@ -159,7 +190,3 @@ class Component:
     def tag_field_names(self):
         tag_fields = getattr(self, "_tag_fields", {})
         return tag_fields.keys()
-
-
-class ComponentRegisterError(Exception):
-    pass
