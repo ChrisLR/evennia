@@ -10,7 +10,13 @@ See the docs for more information.
 from evennia.contrib.base_systems.components import exceptions
 from evennia.contrib.base_systems.components.listing import COMPONENT_LISTING, get_component_class
 from evennia.contrib.base_systems.components.component import Component
-from evennia.contrib.base_systems.components.dbfield import DBField, NDBField, TagField
+from evennia.contrib.base_systems.components.dbfield import (
+    DBField,
+    NDBField,
+    TagField,
+    HostField,
+    KeyField
+)
 
 from evennia.contrib.base_systems.components.holder import (
     ComponentHolderMixin,
