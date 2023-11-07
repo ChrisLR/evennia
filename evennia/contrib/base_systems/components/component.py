@@ -3,7 +3,6 @@ Components - ChrisLR 2022
 
 This file contains the base class to inherit for creating new components.
 """
-import itertools
 
 from evennia.commands.cmdset import CmdSet
 from evennia.contrib.base_systems.components import COMPONENT_LISTING, exceptions
@@ -13,20 +12,17 @@ class BaseComponent(type):
     @classmethod
     def __new__(cls, *args):
         new_type = super().__new__(*args)
-        component_key = getattr(new_type, "component_key", None)
-        component_slot = getattr(new_type, "component_slot", None)
-        if not component_key and not component_slot:
-            legacy_name = getattr(new_type, "name", None)
-            component_key = legacy_name
-        elif not component_key:
-            raise ValueError(f"A component_key is required for {new_type}")
-        elif not component_slot:
-            raise ValueError(f"A component_slot is required for {new_type}")
+        if new_type.__base__ == object:
+            return new_type
 
-        if component_key in COMPONENT_LISTING:
-            raise ValueError(f"Component key {component_key} is a duplicate, must be unique.")
+        name = getattr(new_type, "name", None)
+        if not name:
+            raise ValueError(f"Component {new_type} requires a name.")
 
-        COMPONENT_LISTING[component_key] = new_type
+        if name in COMPONENT_LISTING:
+            raise ValueError(f"Component name {name} is a duplicate, must be unique.")
+
+        COMPONENT_LISTING[name] = new_type
 
         return new_type
 
@@ -41,25 +37,16 @@ class Component(metaclass=BaseComponent):
 
     __slots__ = ('host',)
 
-    component_key = ""
-    component_slot = ""
+    name = ""
+    slot = None
 
     cmd_set: CmdSet = None
 
+    _fields = {}
+
     def __init__(self, host=None):
-        assert self.component_slot and self.component_key or getattr(self, 'name', None),\
-            "All Components must have a slot and a key"
+        assert self.name, "All Components must have a name"
         self.host = host
-
-    @classmethod
-    def get_component_key(cls) -> str:
-        key = cls.component_key
-        return key if key else getattr(cls, "name", "")
-
-    @classmethod
-    def get_component_slot(cls) -> str:
-        slot_key = cls.component_slot
-        return slot_key if slot_key else getattr(cls, "name", "")
 
     @classmethod
     def default_create(cls, host):
@@ -102,8 +89,8 @@ class Component(metaclass=BaseComponent):
         """
         This deletes all component attributes from the host's db
         """
-        for attribute in self._all_db_field_names:
-            delattr(self, attribute)
+        for name in self._fields.keys():
+            delattr(self, name)
 
     @classmethod
     def load(cls, host):
@@ -130,7 +117,7 @@ class Component(metaclass=BaseComponent):
 
         """
         if self.host and self.host != host:
-            raise exceptions.ComponentRegisterError("Components must not register twice!")
+            raise exceptions.InvalidComponentError("Components must not register twice!")
 
         if self.cmd_set:
             self.host.cmdset.add(self.cmd_set)
@@ -175,21 +162,10 @@ class Component(metaclass=BaseComponent):
         """
         return self.host.nattributes
 
-    @property
-    def _all_db_field_names(self):
-        return itertools.chain(self.db_field_names, self.ndb_field_names)
+    @classmethod
+    def add_field(cls, name, field):
+        cls._fields[name] = field
 
-    @property
-    def db_field_names(self):
-        db_fields = getattr(self, "_db_fields", {})
-        return db_fields.keys()
-
-    @property
-    def ndb_field_names(self):
-        ndb_fields = getattr(self, "_ndb_fields", {})
-        return ndb_fields.keys()
-
-    @property
-    def tag_field_names(self):
-        tag_fields = getattr(self, "_tag_fields", {})
-        return tag_fields.keys()
+    @classmethod
+    def get_fields(cls):
+        return tuple(cls._fields.values())
