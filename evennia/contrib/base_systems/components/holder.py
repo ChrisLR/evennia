@@ -37,10 +37,8 @@ class ComponentProperty:
 
     def __set_name__(self, owner, name):
         # Retrieve the class_components set on the direct class only
-        class_components = owner.__dict__.get("_class_components")
+        class_components = owner.__dict__.get("_class_components", [])
         if not class_components:
-            # Create a new list, including inherited class components
-            class_components = list(getattr(owner, "_class_components", []))
             setattr(owner, "_class_components", class_components)
 
         class_components.append((self.name, self.values))
@@ -210,7 +208,6 @@ class ComponentHolderMixin:
     All registered components are initialized on the typeclass.
     They will be of None value if not present in the class components or runtime components.
     """
-
     def at_init(self):
         """
         Method that initializes the ComponentHandler.
@@ -237,7 +234,7 @@ class ComponentHolderMixin:
         super().basetype_setup()
         setattr(self, "_component_handler", ComponentHandler(self))
         setattr(self, "_signal_handler", signals.SignalsHandler(self))
-        class_components = getattr(self, "_class_components", ())
+        class_components = self._get_class_components()
         for component_name, values in class_components:
             component_class = components.get_component_class(component_name)
             component = component_class.create(self, **values)
@@ -266,3 +263,22 @@ class ComponentHolderMixin:
     @property
     def signals(self) -> signals.SignalsHandler:
         return getattr(self, "_signal_handler", None)
+
+    def _get_class_components(self):
+        class_components = {}
+
+        def base_type_iterator():
+            base_stack = [type(self)]
+            while base_stack:
+                _base_type = base_stack.pop()
+                yield _base_type
+                base_stack.extend(_base_type.__bases__)
+
+        for base_type in base_type_iterator():
+            base_class_components = getattr(base_type, "_class_components", ())
+            class_components.update({cmp[0]: cmp[1] for cmp in base_class_components})
+
+        instance_components = getattr(self, "_class_components", ())
+        class_components.update({cmp[0]: cmp[1] for cmp in instance_components})
+
+        return tuple(class_components.items())

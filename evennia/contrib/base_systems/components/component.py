@@ -19,10 +19,11 @@ class BaseComponent(type):
         if not name:
             raise ValueError(f"Component {new_type} requires a name.")
 
-        if name in COMPONENT_LISTING:
-            raise ValueError(f"Component name {name} is a duplicate, must be unique.")
-
-        COMPONENT_LISTING[name] = new_type
+        if existing_type := COMPONENT_LISTING.get(name):
+            if not str(new_type) == str(existing_type):
+                raise ValueError(f"Component name {name} is a duplicate, must be unique.")
+        else:
+            COMPONENT_LISTING[name] = new_type
 
         return new_type
 
