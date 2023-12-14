@@ -6,10 +6,11 @@ Testing of ExtendedRoom contrib
 import datetime
 
 from django.conf import settings
-from evennia import create_object
-from evennia.utils.test_resources import BaseEvenniaCommandTest, EvenniaTestCase
 from mock import Mock, patch
 from parameterized import parameterized
+
+from evennia import create_object
+from evennia.utils.test_resources import BaseEvenniaCommandTest, EvenniaTestCase
 
 from . import extended_room
 
@@ -358,7 +359,7 @@ The room Room(#{self.room1.id}) doesn't have any details.
         mock_gametime.return_value = _get_timestamp("autumn", "afternoon")
 
         self.call(
-            extended_room.CmdExtendedRoomGameTime(), "", "It's a autumn day, in the afternoon."
+            extended_room.CmdExtendedRoomGameTime(), "", "It's an autumn day, in the afternoon."
         )
 
     @patch("evennia.utils.gametime.gametime")

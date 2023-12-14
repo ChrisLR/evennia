@@ -22,6 +22,7 @@ import time
 from codecs import lookup as codecs_lookup
 
 from django.conf import settings
+
 import evennia
 from evennia.utils import create, logger, search, utils
 
@@ -60,12 +61,7 @@ class MuxAccountLookCommand(COMMAND_DEFAULT_CLASS):
 
         super().parse()
 
-        playable = self.account.db._playable_characters
-        if playable is not None:
-            # clean up list if character object was deleted in between
-            if None in playable:
-                playable = [character for character in playable if character]
-                self.account.db._playable_characters = playable
+        playable = self.account.characters
         # store playable property
         if self.args:
             self.playable = dict((utils.to_str(char.key.lower()), char) for char in playable).get(
@@ -78,6 +74,7 @@ class MuxAccountLookCommand(COMMAND_DEFAULT_CLASS):
 # Obs - these are all intended to be stored on the Account, and as such,
 # use self.account instead of self.caller, just to be sure. Also self.msg()
 # is used to make sure returns go to the right session
+
 
 # note that this is inheriting from MuxAccountLookCommand,
 # and has the .playable property.
@@ -149,52 +146,20 @@ class CmdCharCreate(COMMAND_DEFAULT_CLASS):
             self.msg("Usage: charcreate <charname> [= description]")
             return
         key = self.lhs
-        desc = self.rhs
+        description = self.rhs or "This is a character."
 
-        if _MAX_NR_CHARACTERS is not None:
-            if (
-                not account.is_superuser
-                and not account.check_permstring("Developer")
-                and account.db._playable_characters
-                and len(account.db._playable_characters) >= _MAX_NR_CHARACTERS
-            ):
-                plural = "" if _MAX_NR_CHARACTERS == 1 else "s"
-                self.msg(f"You may only have a maximum of {_MAX_NR_CHARACTERS} character{plural}.")
-                return
-        from evennia.objects.models import ObjectDB
+        new_character, errors = self.account.create_character(
+            key=key, description=description, ip=self.session.address
+        )
 
-        typeclass = settings.BASE_CHARACTER_TYPECLASS
-
-        if ObjectDB.objects.filter(db_typeclass_path=typeclass, db_key__iexact=key):
-            # check if this Character already exists. Note that we are only
-            # searching the base character typeclass here, not any child
-            # classes.
-            self.msg(f"|rA character named '|w{key}|r' already exists.|n")
+        if errors:
+            self.msg(errors)
+        if not new_character:
             return
 
-        # create the character
-        start_location = ObjectDB.objects.get_id(settings.START_LOCATION)
-        default_home = ObjectDB.objects.get_id(settings.DEFAULT_HOME)
-        permissions = settings.PERMISSION_ACCOUNT_DEFAULT
-        new_character = create.create_object(
-            typeclass, key=key, location=start_location, home=default_home, permissions=permissions
-        )
-        # only allow creator (and developers) to puppet this char
-        new_character.locks.add(
-            "puppet:id(%i) or pid(%i) or perm(Developer) or pperm(Developer);delete:id(%i) or"
-            " perm(Admin)" % (new_character.id, account.id, account.id)
-        )
-        account.db._playable_characters.append(new_character)
-        if desc:
-            new_character.db.desc = desc
-        elif not new_character.db.desc:
-            new_character.db.desc = "This is a character."
         self.msg(
             f"Created new character {new_character.key}. Use |wic {new_character.key}|n to enter"
             " the game as this character."
-        )
-        logger.log_sec(
-            f"Character Created: {new_character} (Caller: {account}, IP: {self.session.address})."
         )
 
 
@@ -223,7 +188,7 @@ class CmdCharDelete(COMMAND_DEFAULT_CLASS):
         # use the playable_characters list to search
         match = [
             char
-            for char in utils.make_iter(account.db._playable_characters)
+            for char in utils.make_iter(account.characters)
             if char.key.lower() == self.args.lower()
         ]
         if not match:
@@ -243,9 +208,7 @@ class CmdCharDelete(COMMAND_DEFAULT_CLASS):
                     # only take action
                     delobj = caller.ndb._char_to_delete
                     key = delobj.key
-                    caller.db._playable_characters = [
-                        pc for pc in caller.db._playable_characters if pc != delobj
-                    ]
+                    caller.characters.remove(delobj)
                     delobj.delete()
                     self.msg(f"Character '{key}' was permanently deleted.")
                     logger.log_sec(
@@ -314,13 +277,13 @@ class CmdIC(COMMAND_DEFAULT_CLASS):
         else:
             # argument given
 
-            if account.db._playable_characters:
+            if playables := account.characters:
                 # look at the playable_characters list first
                 character_candidates.extend(
                     utils.make_iter(
                         account.search(
                             self.args,
-                            candidates=account.db._playable_characters,
+                            candidates=playables,
                             search_object=True,
                             quiet=True,
                         )
@@ -1056,4 +1019,4 @@ class CmdStyle(COMMAND_DEFAULT_CLASS):
         except ValueError as e:
             self.msg(str(e))
             return
-        self.msg(f"Style {self.lhs} set to {result}")
+        self.msg(f"Style {result.key} set to {result.display()}")

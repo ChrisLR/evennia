@@ -34,6 +34,8 @@ from django.db.models.base import ModelBase
 from django.urls import reverse
 from django.utils.encoding import smart_str
 from django.utils.text import slugify
+
+import evennia
 from evennia.locks.lockhandler import LockHandler
 from evennia.server.signals import SIGNAL_TYPED_OBJECT_POST_RENAME
 from evennia.typeclasses import managers
@@ -626,8 +628,7 @@ class TypedObject(SharedMemoryModel):
                 raise RuntimeError(
                     "Cannot use swap_typeclass on time-dependent "
                     "Script '%s'.\nStop and start a new Script of the "
-                    "right type instead."
-                    % self.key
+                    "right type instead." % self.key
                 )
 
         self.typeclass_path = new_typeclass.path
@@ -700,7 +701,7 @@ class TypedObject(SharedMemoryModel):
             result (bool): If the permstring is passed or not.
 
         """
-        if hasattr(self, "account"):
+        if inherits_from(self, evennia.DefaultObject):
             if (
                 self.account
                 and self.account.is_superuser

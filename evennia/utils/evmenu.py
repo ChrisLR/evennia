@@ -216,7 +216,7 @@ callable must be a module-global function on the form
 
     ## options
 
-        # Beginner-Tutorial the option-line with >
+        # Beginning the option-line with >
         # allows to perform different actions depending on
         # what is inserted.
 
@@ -276,12 +276,24 @@ from django.conf import settings
 
 # i18n
 from django.utils.translation import gettext as _
+
+import evennia
 from evennia import CmdSet, Command
 from evennia.commands import cmdhandler
 from evennia.utils import logger
 from evennia.utils.ansi import strip_ansi
 from evennia.utils.evtable import EvColumn, EvTable
-from evennia.utils.utils import crop, dedent, is_iter, m_len, make_iter, mod_import, pad, to_str
+from evennia.utils.utils import (
+    crop,
+    dedent,
+    is_iter,
+    m_len,
+    make_iter,
+    mod_import,
+    pad,
+    to_str,
+    inherits_from,
+)
 
 # read from protocol NAWS later?
 _MAX_TEXT_WIDTH = settings.CLIENT_DEFAULT_WIDTH
@@ -413,7 +425,7 @@ class CmdEvMenuNode(Command):
             if _restore(caller):
                 return
             orig_caller = caller
-            caller = caller.account if hasattr(caller, "account") else None
+            caller = caller.account if inherits_from(caller, evennia.DefaultObject) else None
             menu = caller.ndb._evmenu if caller else None
             if not menu:
                 if caller and _restore(caller):
@@ -919,7 +931,7 @@ class EvMenu:
         # ((key,aliases)-value) pairs.
 
         # make sure helptext is defined
-        helptext = ""       
+        helptext = ""
         if is_iter(nodetext):
             nodetext, *helptext = nodetext
             helptext = helptext[0] if helptext else ""
@@ -1487,7 +1499,7 @@ class CmdGetInput(Command):
         caller = self.caller
         try:
             getinput = caller.ndb._getinput
-            if not getinput and hasattr(caller, "account"):
+            if not getinput and inherits_from(caller, evennia.DefaultObject):
                 getinput = caller.account.ndb._getinput
                 if getinput:
                     caller = caller.account
@@ -1608,7 +1620,9 @@ class CmdYesNoQuestion(Command):
 
     def _clean(self, caller):
         del caller.ndb._yes_no_question
-        if not caller.cmdset.has(YesNoQuestionCmdSet) and hasattr(caller, "account"):
+        if not caller.cmdset.has(YesNoQuestionCmdSet) and inherits_from(
+            caller, evennia.DefaultObject
+        ):
             caller.account.cmdset.remove(YesNoQuestionCmdSet)
         else:
             caller.cmdset.remove(YesNoQuestionCmdSet)
@@ -1618,7 +1632,7 @@ class CmdYesNoQuestion(Command):
         caller = self.caller
         try:
             yes_no_question = caller.ndb._yes_no_question
-            if not yes_no_question and hasattr(caller, "account"):
+            if not yes_no_question and inherits_from(caller, evennia.DefaultObject):
                 yes_no_question = caller.account.ndb._yes_no_question
                 caller = caller.account
 

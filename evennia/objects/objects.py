@@ -8,6 +8,7 @@ This is the v1.0 develop version (for ref in doc building).
 
 """
 import time
+import typing
 from collections import defaultdict
 
 import evennia
@@ -203,6 +204,12 @@ class DefaultObject(ObjectDB, metaclass=TypeclassBase):
 
     """
 
+    # Determines which order command sets begin to be assembled from.
+    # Objects are usually third.
+    cmdset_provider_order = 100
+    cmdset_provider_error_order = 100
+    cmdset_provider_type = "object"
+
     # Used for sorting / filtering in inventories / room contents.
     _content_types = ("object",)
 
@@ -220,7 +227,6 @@ class DefaultObject(ObjectDB, metaclass=TypeclassBase):
 {exits}{characters}{things}
 {footer}
     """
-
     # on-object properties
 
     @lazy_property
@@ -255,6 +261,22 @@ class DefaultObject(ObjectDB, metaclass=TypeclassBase):
 
         """
         return self.sessions.count()
+
+    def get_cmdset_providers(self) -> dict[str, "CmdSetProvider"]:
+        """
+        Overrideable method which returns a dictionary of every kind of object which
+        has a cmdsethandler linked to this Object, and should participate in cmdset
+        merging.
+
+        Objects might be aware of an Account. Otherwise, just themselves, by default.
+
+        Returns:
+            dict[str, CmdSetProvider]: The CmdSetProviders linked to this Object.
+        """
+        out = {"object": self}
+        if self.account:
+            out["account"] = self.account
+        return out
 
     @property
     def is_superuser(self):
@@ -1011,7 +1033,14 @@ class DefaultObject(ObjectDB, metaclass=TypeclassBase):
             obj.move_to(home, move_type="teleport")
 
     @classmethod
-    def create(cls, key, account=None, **kwargs):
+    def create(
+        cls,
+        key: str,
+        account: "DefaultAccount" = None,
+        caller: "DefaultObject" = None,
+        method: str = "create",
+        **kwargs,
+    ):
         """
         Creates a basic object with default parameters, unless otherwise
         specified or extended.
@@ -1020,11 +1049,14 @@ class DefaultObject(ObjectDB, metaclass=TypeclassBase):
 
         Args:
             key (str): Name of the new object.
-            account (Account): Account to attribute this object to.
+
 
         Keyword Args:
+            account (Account): Account to attribute this object to.
+            caller (DefaultObject): The object which is creating this one.
             description (str): Brief description for this object.
             ip (str): IP address of creator (for object auditing).
+            method (str): The method of creation. Defaults to "create".
 
         Returns:
             object (Object): A newly created object of the given typeclass.
@@ -1149,14 +1181,13 @@ class DefaultObject(ObjectDB, metaclass=TypeclassBase):
         # sever the connection (important!)
         if self.account:
             # Remove the object from playable characters list
-            if self in self.account.db._playable_characters:
-                self.account.db._playable_characters = [
-                    x for x in self.account.db._playable_characters if x != self
-                ]
+            self.account.characters.remove(self)
             for session in self.sessions.all():
                 self.account.unpuppet_object(session)
 
-        self.account = None
+        # unlink account/home to avoid issues with saving
+        self.db_account = None
+        self.db_home = None
 
         for script in _ScriptDB.objects.get_all_scripts_on_obj(self):
             script.delete()
@@ -1594,11 +1625,27 @@ class DefaultObject(ObjectDB, metaclass=TypeclassBase):
         have no cmdsets.
 
         Keyword Args:
-            caller (Session, Object or Account): The caller requesting
-                this cmdset.
+            caller (Object, Account or Session): The object requesting the cmdsets.
+            current (CmdSet): The current merged cmdset.
+            force_init (bool): If `True`, force a re-build of the cmdset. (seems unused)
+            **kwargs: Arbitrary input for overloads.
 
         """
         pass
+
+    def get_cmdsets(self, caller, current, **kwargs):
+        """
+        Called by the CommandHandler to get a list of cmdsets to merge.
+
+        Args:
+            caller (obj): The object requesting the cmdsets.
+            current (cmdset): The current merged cmdset.
+            **kwargs: Arbitrary input for overloads.
+
+        Returns:
+            tuple: A tuple of (current, cmdsets), which is probably self.cmdset.current and self.cmdset.cmdset_stack
+        """
+        return self.cmdset.current, list(self.cmdset.cmdset_stack)
 
     def at_pre_puppet(self, account, session=None, **kwargs):
         """
@@ -2531,8 +2578,8 @@ class DefaultCharacter(DefaultObject):
         # Normalize to latin characters and validate, if necessary, the supplied key
         key = cls.normalize_name(key)
 
-        if not cls.validate_name(key):
-            errors.append(_("Invalid character name."))
+        if val_err := cls.validate_name(key, account=account):
+            errors.append(val_err)
             return obj, errors
 
         # Set the supplied key as the name of the intended object
@@ -2550,8 +2597,9 @@ class DefaultCharacter(DefaultObject):
         try:
             # Check to make sure account does not have too many chars
             if account:
-                if len(account.characters) >= settings.MAX_NR_CHARACTERS:
-                    errors.append(_("There are too many characters associated with this account."))
+                avail = account.check_available_slots()
+                if avail:
+                    errors.append(avail)
                     return obj, errors
 
             # Create the Character
@@ -2562,8 +2610,7 @@ class DefaultCharacter(DefaultObject):
                 obj.db.creator_ip = ip
             if account:
                 obj.db.creator_id = account.id
-                if obj not in account.characters:
-                    account.db._playable_characters.append(obj)
+                account.characters.add(obj)
 
             # Add locks
             if not locks and account:
@@ -2606,17 +2653,20 @@ class DefaultCharacter(DefaultObject):
         return latin_name
 
     @classmethod
-    def validate_name(cls, name):
-        """Validate the character name prior to creating. Overload this function to add custom validators
+    def validate_name(cls, name, account=None) -> typing.Optional[str]:
+        """
+        Validate the character name prior to creating. Overload this function to add custom validators
 
         Args:
             name (str) : The name of the character
+        Kwargs:
+            account (DefaultAccount, optional) : The account creating the character.
         Returns:
-            valid (bool) : True if character creation should continue; False if it should fail
+            error (str, optional) : A non-empty error message if there is a problem, otherwise False.
 
         """
-
-        return True  # Default validator does not perform any operations
+        if account and cls.objects.filter_family(db_key__iexact=name):
+            return f"|rA character named '|w{name}|r' already exists.|n"
 
     def basetype_setup(self):
         """
@@ -2784,7 +2834,14 @@ class DefaultRoom(DefaultObject):
     )
 
     @classmethod
-    def create(cls, key, account=None, **kwargs):
+    def create(
+        cls,
+        key: str,
+        account: "DefaultAccount" = None,
+        caller: DefaultObject = None,
+        method: str = "create",
+        **kwargs,
+    ):
         """
         Creates a basic Room with default parameters, unless otherwise
         specified or extended.
@@ -2793,13 +2850,15 @@ class DefaultRoom(DefaultObject):
 
         Args:
             key (str): Name of the new Room.
-            account (obj, optional): Account to associate this Room with. If
-                given, it will be given specific control/edit permissions to this
-                object (along with normal Admin perms). If not given, default
 
         Keyword Args:
+            account (DefaultAccount, optional): Account to associate this Room with. If
+                given, it will be given specific control/edit permissions to this
+                object (along with normal Admin perms). If not given, default
+            caller (DefaultObject): The object which is creating this one.
             description (str): Brief description for this object.
             ip (str): IP address of creator (for object auditing).
+            method (str): The method used to create the room. Defaults to "create".
 
         Returns:
             room (Object): A newly created Room of the given typeclass.
@@ -2990,7 +3049,16 @@ class DefaultExit(DefaultObject):
     # Command hooks
 
     @classmethod
-    def create(cls, key, source, dest, account=None, **kwargs):
+    def create(
+        cls,
+        key: str,
+        location: DefaultRoom = None,
+        destination: DefaultRoom = None,
+        account: "DefaultAccount" = None,
+        caller: DefaultObject = None,
+        method: str = "create",
+        **kwargs,
+    ) -> tuple[typing.Optional["DefaultExit"], list[str]]:
         """
         Creates a basic Exit with default parameters, unless otherwise
         specified or extended.
@@ -3000,13 +3068,14 @@ class DefaultExit(DefaultObject):
         Args:
             key (str): Name of the new Exit, as it should appear from the
                 source room.
-            account (obj): Account to associate this Exit with.
-            source (Room): The room to create this exit in.
-            dest (Room): The room to which this exit should go.
+            location (Room): The room to create this exit in.
 
         Keyword Args:
+            account (AccountDB): Account to associate this Exit with.
+            caller (ObjectDB): The Object creating this Object.
             description (str): Brief description for this object.
             ip (str): IP address of creator (for object auditing).
+            destination (Room): The room to which this exit should go.
 
         Returns:
             exit (Object): A newly created Room of the given typeclass.
@@ -3029,8 +3098,8 @@ class DefaultExit(DefaultObject):
         kwargs["report_to"] = kwargs.pop("report_to", account)
 
         # Set to/from rooms
-        kwargs["location"] = source
-        kwargs["destination"] = dest
+        kwargs["location"] = location
+        kwargs["destination"] = destination
 
         description = kwargs.pop("description", "")
 
@@ -3099,8 +3168,10 @@ class DefaultExit(DefaultObject):
         has no cmdsets.
 
         Keyword Args:
-          force_init (bool): If `True`, force a re-build of the cmdset
-            (for example to update aliases).
+            caller (Object, Account or Session): The object requesting the cmdsets.
+            current (CmdSet): The current merged cmdset.
+            force_init (bool): If `True`, force a re-build of the cmdset
+                (for example to update aliases).
 
         """
 

@@ -2,12 +2,15 @@
 Building and world design commands
 """
 import re
+import typing
 
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db.models import Max, Min, Q
+
+import evennia
 from evennia import InterruptCommand
-from evennia.commands.cmdhandler import get_and_merge_cmdsets
+from evennia.commands.cmdhandler import get_and_merge_cmdsets, generate_cmdset_providers
 from evennia.locks.lockhandler import LockException
 from evennia.objects.models import ObjectDB
 from evennia.prototypes import menus as olc_menus
@@ -109,6 +112,14 @@ class ObjManipCommand(COMMAND_DEFAULT_CLASS):
     # OBS - this is just a parent - it's not intended to actually be
     # included in a commandset on its own!
 
+    # used by get_object_typeclass as defaults.
+    default_typeclasses = {
+        "object": settings.BASE_OBJECT_TYPECLASS,
+        "character": settings.BASE_CHARACTER_TYPECLASS,
+        "room": settings.BASE_ROOM_TYPECLASS,
+        "exit": settings.BASE_EXIT_TYPECLASS,
+    }
+
     def parse(self):
         """
         We need to expand the default parsing to get all
@@ -163,6 +174,48 @@ class ObjManipCommand(COMMAND_DEFAULT_CLASS):
         self.lhs_objattr = obj_attrs[0]
         self.rhs_objattr = obj_attrs[1]
 
+    def get_object_typeclass(
+        self, obj_type: str = "object", typeclass: str = None, method: str = "cmd_create", **kwargs
+    ) -> tuple[typing.Optional["Builder"], list[str]]:
+        """
+        This hook is called by build commands to determine which typeclass to use for a specific purpose. For instance,
+        when using dig, the system can use this to autodetect which kind of Room typeclass to use based on where the
+        builder is currently located.
+
+        Note: Although intended to be used with typeclasses, as long as this hook returns a class with a create method,
+            which accepts the same API as DefaultObject.create(), build commands and other places should take it.
+
+        Args:
+            obj_type (str, optional): The type of object that is being created. Defaults to "object". Evennia provides
+                "room", "exit", and "character" by default, but this can be extended.
+            typeclass (str, optional): The typeclass that was requested by the player. Defaults to None.
+                Can also be an actual class.
+            method (str, optional): The method that is calling this hook. Defaults to "cmd_create".
+                Others are "cmd_dig", "cmd_open", "cmd_tunnel", etc.
+
+        Returns:
+            results_tuple (tuple[Optional[Builder], list[str]]): A tuple containing the typeclass to use and a list of
+                errors. (which might be empty.)
+        """
+
+        found_typeclass = typeclass or self.default_typeclasses.get(obj_type, None)
+        if not found_typeclass:
+            return None, [f"No typeclass found for object type '{obj_type}'."]
+
+        try:
+            type_class = (
+                class_from_module(found_typeclass, settings.TYPECLASS_PATHS)
+                if isinstance(found_typeclass, str)
+                else found_typeclass
+            )
+        except ImportError:
+            return None, [f"Typeclass '{found_typeclass}' could not be imported."]
+
+        if not hasattr(type_class, "create"):
+            return None, [f"Typeclass '{found_typeclass}' is not creatable."]
+
+        return type_class, []
+
 
 class CmdSetObjAlias(COMMAND_DEFAULT_CLASS):
     """
@@ -193,6 +246,8 @@ class CmdSetObjAlias(COMMAND_DEFAULT_CLASS):
     locks = "cmd:perm(setobjalias) or perm(Builder)"
     help_category = "Building"
 
+    method_type = "cmd_create"
+
     def func(self):
         """Set the aliases."""
 
@@ -200,7 +255,7 @@ class CmdSetObjAlias(COMMAND_DEFAULT_CLASS):
 
         if not self.lhs:
             string = "Usage: alias <obj> [= [alias[,alias ...]]]"
-            self.caller.msg(string)
+            self.msg(string)
             return
         objname = self.lhs
 
@@ -416,7 +471,7 @@ class CmdCpAttr(ObjManipCommand):
         required and verify an object has an attribute.
         """
         if not obj.attributes.has(attr):
-            self.caller.msg(f"{obj.name} doesn't have an attribute {attr}.")
+            self.msg(f"{obj.name} doesn't have an attribute {attr}.")
             return False
         return True
 
@@ -470,7 +525,7 @@ class CmdCpAttr(ObjManipCommand):
                 return
 
         if (len(from_obj_attrs) != len(set(from_obj_attrs))) and clear:
-            self.caller.msg("|RCannot have duplicate source names when moving!")
+            self.msg("|RCannot have duplicate source names when moving!")
             return
 
         result = []
@@ -539,7 +594,7 @@ class CmdMvAttr(ObjManipCommand):
       mvattr[/switch] <obj>/<attr> = <obj1> [,<obj2>,<obj3>,...]
       mvattr[/switch] <attr> = <obj1>/<attr1> [,<obj2>/<attr2>,<obj3>/<attr3>,...]
       mvattr[/switch] <attr> = <obj1>[,<obj2>,<obj3>,...]"""
-            self.caller.msg(string)
+            self.msg(string)
             return
 
         # simply use cpattr for all the functionality
@@ -578,10 +633,6 @@ class CmdCreate(ObjManipCommand):
     locks = "cmd:perm(create) or perm(Builder)"
     help_category = "Building"
 
-    # lockstring of newly created objects, for easy overloading.
-    # Will be formatted with the {id} of the creating object.
-    new_obj_lockstring = "control:id({id}) or perm(Admin);delete:id({id}) or perm(Admin)"
-
     def func(self):
         """
         Creates the object.
@@ -599,22 +650,23 @@ class CmdCreate(ObjManipCommand):
             string = ""
             name = objdef["name"]
             aliases = objdef["aliases"]
-            typeclass = objdef["option"]
 
-            # create object (if not a valid typeclass, the default
-            # object typeclass will automatically be used)
-            lockstring = self.new_obj_lockstring.format(id=caller.id)
-            obj = create.create_object(
-                typeclass,
-                name,
-                caller,
-                home=caller,
-                aliases=aliases,
-                locks=lockstring,
-                report_to=caller,
+            obj_typeclass, errors = self.get_object_typeclass(
+                obj_type="object", typeclass=objdef["option"]
             )
+            if errors:
+                self.msg(errors)
+            if not obj_typeclass:
+                continue
+
+            obj, errors = obj_typeclass.create(
+                name, caller, home=caller, aliases=aliases, report_to=caller, caller=caller
+            )
+            if errors:
+                self.msg(errors)
             if not obj:
                 continue
+
             if aliases:
                 string = (
                     f"You create a new {obj.typename}: {obj.name} (aliases: {', '.join(aliases)})."
@@ -682,7 +734,7 @@ class CmdDesc(COMMAND_DEFAULT_CLASS):
             return
 
         if not (obj.access(self.caller, "control") or obj.access(self.caller, "edit")):
-            self.caller.msg(f"You don't have permission to edit the description of {obj.key}.")
+            self.msg(f"You don't have permission to edit the description of {obj.key}.")
             return
 
         self.caller.db.evmenu_target = obj
@@ -829,7 +881,7 @@ class CmdDestroy(COMMAND_DEFAULT_CLASS):
                 obj = caller.search(objname)
 
             if obj is None:
-                self.caller.msg(
+                self.msg(
                     " (Objects to destroy must either be local or specified with a unique #dbref.)"
                 )
             elif obj not in objs:
@@ -895,6 +947,8 @@ class CmdDig(ObjManipCommand):
     locks = "cmd:perm(dig) or perm(Builder)"
     help_category = "Building"
 
+    method_type = "cmd_dig"
+
     # lockstring of newly created rooms, for easy overloading.
     # Will be formatted with the {id} of the creating object.
     new_room_lockstring = (
@@ -923,22 +977,32 @@ class CmdDig(ObjManipCommand):
         location = caller.location
 
         # Create the new room
-        typeclass = room["option"]
-        if not typeclass:
-            typeclass = settings.BASE_ROOM_TYPECLASS
+        room_typeclass, errors = self.get_object_typeclass(
+            obj_type="room", typeclass=room["option"], method=self.method_type
+        )
+        if errors:
+            self.msg("|rError creating room:|n %s" % errors)
+        if not room_typeclass:
+            return
 
         # create room
-        new_room = create.create_object(
-            typeclass, room["name"], aliases=room["aliases"], report_to=caller
+        new_room, errors = room_typeclass.create(
+            room["name"],
+            aliases=room["aliases"],
+            report_to=caller,
+            caller=caller,
+            method=self.method_type,
         )
-        lockstring = self.new_room_lockstring.format(id=caller.id)
-        new_room.locks.add(lockstring)
+        if errors:
+            self.msg("|rError creating room:|n %s" % errors)
+        if not new_room:
+            return
+
         alias_string = ""
         if new_room.aliases.all():
             alias_string = " (%s)" % ", ".join(new_room.aliases.all())
-        room_string = (
-            f"Created room {new_room}({new_room.dbref}){alias_string} of type {typeclass}."
-        )
+
+        room_string = f"Created room {new_room}({new_room.dbref}){alias_string} of type {new_room}."
 
         # create exit to room
 
@@ -953,19 +1017,28 @@ class CmdDig(ObjManipCommand):
                 exit_to_string = "\nYou cannot create an exit from a None-location."
             else:
                 # Build the exit to the new room from the current one
-                typeclass = to_exit["option"]
-                if not typeclass:
-                    typeclass = settings.BASE_EXIT_TYPECLASS
-
-                new_to_exit = create.create_object(
-                    typeclass,
-                    to_exit["name"],
-                    location,
-                    aliases=to_exit["aliases"],
-                    locks=lockstring,
-                    destination=new_room,
-                    report_to=caller,
+                exit_typeclass, errors = self.get_object_typeclass(
+                    obj_type="exit", typeclass=to_exit["option"], method=self.method_type
                 )
+                if errors:
+                    self.msg("|rError creating exit:|n %s" % errors)
+                if not exit_typeclass:
+                    return
+
+                new_to_exit, errors = exit_typeclass.create(
+                    to_exit["name"],
+                    location=location,
+                    destination=new_room,
+                    aliases=to_exit["aliases"],
+                    report_to=caller,
+                    caller=caller,
+                    method=self.method_type,
+                )
+                if errors:
+                    self.msg("|rError creating exit:|n %s" % errors)
+                if not new_to_exit:
+                    return
+
                 alias_string = ""
                 if new_to_exit.aliases.all():
                     alias_string = " (%s)" % ", ".join(new_to_exit.aliases.all())
@@ -984,18 +1057,26 @@ class CmdDig(ObjManipCommand):
             elif not location:
                 exit_back_string = "\nYou cannot create an exit back to a None-location."
             else:
-                typeclass = back_exit["option"]
-                if not typeclass:
-                    typeclass = settings.BASE_EXIT_TYPECLASS
-                new_back_exit = create.create_object(
-                    typeclass,
-                    back_exit["name"],
-                    new_room,
-                    aliases=back_exit["aliases"],
-                    locks=lockstring,
-                    destination=location,
-                    report_to=caller,
+                exit_typeclass, errors = self.get_object_typeclass(
+                    obj_type="exit", typeclass=back_exit["option"], method=self.method_type
                 )
+                if errors:
+                    self.msg("|rError creating exit:|n %s" % errors)
+                if not exit_typeclass:
+                    return
+                new_back_exit, errors = exit_typeclass.create(
+                    back_exit["name"],
+                    location=new_room,
+                    destination=location,
+                    aliases=back_exit["aliases"],
+                    report_to=caller,
+                    caller=caller,
+                    method=self.method_type,
+                )
+                if errors:
+                    self.msg("|rError creating exit:|n %s" % errors)
+                if not new_back_exit:
+                    return
                 alias_string = ""
                 if new_back_exit.aliases.all():
                     alias_string = " (%s)" % ", ".join(new_back_exit.aliases.all())
@@ -1041,6 +1122,8 @@ class CmdTunnel(COMMAND_DEFAULT_CLASS):
     locks = "cmd: perm(tunnel) or perm(Builder)"
     help_category = "Building"
 
+    method_type = "cmd_tunnel"
+
     # store the direction, full name and its opposite
     directions = {
         "n": ("north", "s"),
@@ -1065,7 +1148,7 @@ class CmdTunnel(COMMAND_DEFAULT_CLASS):
                 "Usage: tunnel[/switch] <direction>[:typeclass] [= <roomname>"
                 "[;alias;alias;...][:typeclass]]"
             )
-            self.caller.msg(string)
+            self.msg(string)
             return
 
         # If we get a typeclass, we need to get just the exitname
@@ -1076,7 +1159,7 @@ class CmdTunnel(COMMAND_DEFAULT_CLASS):
                 sorted(self.directions.keys())
             )
             string += "\n(use dig for more freedom)"
-            self.caller.msg(string)
+            self.msg(string)
             return
 
         # retrieve all input and parse it
@@ -1162,7 +1245,7 @@ class CmdLink(COMMAND_DEFAULT_CLASS):
                 return
 
             if target == obj:
-                self.caller.msg("Cannot link an object to itself.")
+                self.msg("Cannot link an object to itself.")
                 return
 
             string = ""
@@ -1178,7 +1261,7 @@ class CmdLink(COMMAND_DEFAULT_CLASS):
                         f"To create a two-way link, {obj} and {target} must both have a location"
                     )
                     string += " (i.e. they cannot be rooms, but should be exits)."
-                    self.caller.msg(string)
+                    self.msg(string)
                     return
                 if not target.destination:
                     string += note % (target.name, target.dbref)
@@ -1274,7 +1357,7 @@ class CmdSetHome(CmdLink):
         """implement the command"""
         if not self.args:
             string = "Usage: sethome <obj> [= <home_location>]"
-            self.caller.msg(string)
+            self.msg(string)
             return
 
         obj = self.caller.search(self.lhs, global_search=True)
@@ -1301,7 +1384,7 @@ class CmdSetHome(CmdLink):
                 )
             else:
                 string = f"Home location of {obj} was set to {new_home}({new_home.dbref})."
-        self.caller.msg(string)
+        self.msg(string)
 
 
 class CmdListCmdSets(COMMAND_DEFAULT_CLASS):
@@ -1427,6 +1510,8 @@ class CmdOpen(ObjManipCommand):
     locks = "cmd:perm(open) or perm(Builder)"
     help_category = "Building"
 
+    method_type = "cmd_open"
+
     new_obj_lockstring = "control:id({id}) or perm(Admin);delete:id({id}) or perm(Admin)"
 
     # a custom member method to chug out exits and do checks
@@ -1473,17 +1558,25 @@ class CmdOpen(ObjManipCommand):
 
         else:
             # exit does not exist before. Create a new one.
-            lockstring = self.new_obj_lockstring.format(id=caller.id)
-            if not typeclass:
-                typeclass = settings.BASE_EXIT_TYPECLASS
-            exit_obj = create.create_object(
-                typeclass,
-                key=exit_name,
+            exit_typeclass, errors = self.get_object_typeclass(
+                obj_type="exit", typeclass=typeclass, method=self.method_type
+            )
+            if errors:
+                self.msg("|rError creating exit:|n %s" % errors)
+            if not exit_typeclass:
+                return
+            exit_obj, errors = exit_typeclass.create(
+                exit_name,
                 location=location,
                 aliases=exit_aliases,
-                locks=lockstring,
                 report_to=caller,
+                caller=caller,
+                method=self.method_type,
             )
+            if errors:
+                self.msg("|rError creating exit:|n %s" % errors)
+            if not exit_obj:
+                return
             if exit_obj:
                 # storing a destination is what makes it an exit!
                 exit_obj.destination = destination
@@ -1506,14 +1599,14 @@ class CmdOpen(ObjManipCommand):
         super().parse()
         self.location = self.caller.location
         if not self.args or not self.rhs:
-            self.caller.msg(
+            self.msg(
                 "Usage: open <new exit>[;alias...][:typeclass]"
                 "[,<return exit>[;alias..][:typeclass]]] "
                 "= <destination>"
             )
             raise InterruptCommand
         if not self.location:
-            self.caller.msg("You cannot create an exit from a None-location.")
+            self.msg("You cannot create an exit from a None-location.")
             raise InterruptCommand
         self.destination = self.caller.search(self.rhs, global_search=True)
         if not self.destination:
@@ -1848,7 +1941,7 @@ class CmdSetAttribute(ObjManipCommand):
                     "Continue? [Y]/N?"
                 )
                 if answer.lower() in ("n", "no"):
-                    self.caller.msg("Aborted edit.")
+                    self.msg("Aborted edit.")
                     return
         except AttributeError:
             pass
@@ -2525,7 +2618,7 @@ class CmdExamine(ObjManipCommand):
             text (str): The text to send.
 
         """
-        self.caller.msg(text=(text, {"type": "examine"}))
+        super().msg(text=(text, {"type": "examine"}))
 
     def format_key(self, obj):
         return f"{obj.name} ({obj.dbref})"
@@ -2647,7 +2740,7 @@ class CmdExamine(ObjManipCommand):
         all_cmdsets = [(cmdset.key, cmdset) for cmdset in current_cmdset.merged_from]
         # we always at least try to add account- and session sets since these are ignored
         # if we merge on the object level.
-        if hasattr(obj, "account") and obj.account:
+        if inherits_from(obj, evennia.DefaultObject) and obj.account:
             # get Attribute-cmdsets if they exist
             all_cmdsets.extend([(cmdset.key, cmdset) for cmdset in obj.account.cmdset.all()])
             if obj.sessions.count():
@@ -2832,7 +2925,7 @@ class CmdExamine(ObjManipCommand):
         objdata["Sessions"] = self.format_sessions(obj)
         objdata["Email"] = self.format_email(obj)
         objdata["Last Login"] = self.format_last_login(obj)
-        if hasattr(obj, "has_account") and obj.has_account:
+        if inherits_from(obj, evennia.DefaultObject) and obj.has_account:
             objdata["Account"] = self.format_account_key(obj.account)
             objdata["  Account Typeclass"] = self.format_account_typeclass(obj.account)
             objdata["  Account Permissions"] = self.format_account_permissions(obj.account)
@@ -2916,11 +3009,11 @@ class CmdExamine(ObjManipCommand):
         else:
             obj = getattr(search, f"search_{objtype}")(obj_name)
             if not obj:
-                self.caller.msg(f"No {objtype} found with key {obj_name}.")
+                self.msg(f"No {objtype} found with key {obj_name}.")
                 obj = None
             elif len(obj) > 1:
                 err = "Multiple {objtype} found with key {obj_name}:\n{matches}"
-                self.caller.msg(
+                self.msg(
                     err.format(
                         obj_name=obj_name, matches=", ".join(f"{ob.key}(#{ob.id})" for ob in obj)
                     )
@@ -3029,8 +3122,16 @@ class CmdExamine(ObjManipCommand):
                 def _get_cmdset_callback(current_cmdset):
                     self.msg(self.format_output(obj, current_cmdset).strip())
 
+                (
+                    command_objects,
+                    command_objects_list,
+                    command_objects_list_error,
+                    caller,
+                    error_to,
+                ) = generate_cmdset_providers(obj, session=session)
+
                 get_and_merge_cmdsets(
-                    obj, session, account, objct, mergemode, self.raw_string
+                    obj, command_objects_list, mergemode, self.raw_string, error_to
                 ).addCallback(_get_cmdset_callback)
 
             else:
@@ -3654,7 +3755,7 @@ class CmdTeleport(COMMAND_DEFAULT_CLASS):
         if self.rhs:
             self.obj_to_teleport = self.caller.search(self.lhs, global_search=True)
             if not self.obj_to_teleport:
-                self.caller.msg("Did not find object to teleport.")
+                self.msg("Did not find object to teleport.")
                 raise InterruptCommand
             self.destination = self.caller.search(self.rhs, global_search=True)
         elif self.lhs:
@@ -3783,7 +3884,7 @@ class CmdTag(COMMAND_DEFAULT_CLASS):
         """Implement the tag functionality"""
 
         if not self.args:
-            self.caller.msg("Usage: tag[/switches] <obj> [= <tag>[:<category>]]")
+            self.msg("Usage: tag[/switches] <obj> [= <tag>[:<category>]]")
             return
         if "search" in self.switches:
             # search by tag
@@ -3813,7 +3914,7 @@ class CmdTag(COMMAND_DEFAULT_CLASS):
                     tag,
                     " (category: %s)" % category if category else "",
                 )
-            self.caller.msg(string)
+            self.msg(string)
             return
         if "del" in self.switches:
             # remove one or all tags
@@ -3850,7 +3951,7 @@ class CmdTag(COMMAND_DEFAULT_CLASS):
                     string = "Cleared all tags from %s: %s" % (obj, ", ".join(sorted(old_tags)))
                 else:
                     string = "No Tags to clear on %s." % obj
-            self.caller.msg(string)
+            self.msg(string)
             return
         # no search/deletion
         if self.rhs:
@@ -3874,7 +3975,7 @@ class CmdTag(COMMAND_DEFAULT_CLASS):
                 " (category: %s)" % category if category else "",
                 obj,
             )
-            self.caller.msg(string)
+            self.msg(string)
         else:
             # no = found - list tags on object
             # first search locally, then global
@@ -3897,7 +3998,7 @@ class CmdTag(COMMAND_DEFAULT_CLASS):
                 )
             else:
                 string = f"No tags attached to {obj}."
-            self.caller.msg(string)
+            self.msg(string)
 
 
 # helper functions for spawn
@@ -4021,7 +4122,7 @@ class CmdSpawn(COMMAND_DEFAULT_CLASS):
         if err:
             # return None on any error
             if not quiet:
-                self.caller.msg(err)
+                self.msg(err)
             return
         return prototype
 
@@ -4060,7 +4161,7 @@ class CmdSpawn(COMMAND_DEFAULT_CLASS):
                     )
                 else:
                     string = f"Expected {expect}, got {type(prototype)}."
-                self.caller.msg(string)
+                self.msg(string)
                 return
 
         if expect == dict:
@@ -4068,15 +4169,13 @@ class CmdSpawn(COMMAND_DEFAULT_CLASS):
             # so don't allow exec.
             # TODO: Exec support is deprecated. Remove completely for 1.0.
             if "exec" in prototype and not self.caller.check_permstring("Developer"):
-                self.caller.msg(
-                    "Spawn aborted: You are not allowed to use the 'exec' prototype key."
-                )
+                self.msg("Spawn aborted: You are not allowed to use the 'exec' prototype key.")
                 return
             try:
                 # we homogenize the prototype first, to be more lenient with free-form
                 protlib.validate_prototype(protlib.homogenize_prototype(prototype))
             except RuntimeError as err:
-                self.caller.msg(str(err))
+                self.msg(str(err))
                 return
         return prototype
 
@@ -4103,9 +4202,9 @@ class CmdSpawn(COMMAND_DEFAULT_CLASS):
         if prototypes:
             return "\n".join(protlib.prototype_to_str(prot) for prot in prototypes)
         elif query:
-            self.caller.msg(f"No prototype named '{query}' was found.")
+            self.msg(f"No prototype named '{query}' was found.")
         else:
-            self.caller.msg("No prototypes found.")
+            self.msg("No prototypes found.")
 
     def _list_prototypes(self, key=None, tags=None):
         """Display prototypes as a list, optionally limited by key/tags."""
@@ -4408,7 +4507,7 @@ class CmdSpawn(COMMAND_DEFAULT_CLASS):
         # proceed to spawning
         try:
             for obj in spawner.spawn(prototype, caller=self.caller):
-                self.caller.msg("Spawned %s." % obj.get_display_name(self.caller))
+                self.msg("Spawned %s." % obj.get_display_name(self.caller))
                 if not prototype.get("location") and not noloc:
                     # we don't hardcode the location in the prototype (unless the user
                     # did so manually) - that would lead to it having to be 'removed' every

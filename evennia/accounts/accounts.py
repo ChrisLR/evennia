@@ -12,6 +12,7 @@ instead for most things).
 """
 import re
 import time
+import typing
 from random import getrandbits
 
 import evennia
@@ -30,6 +31,7 @@ from evennia.scripts.scripthandler import ScriptHandler
 from evennia.server.models import ServerConfig
 from evennia.server.signals import (
     SIGNAL_ACCOUNT_POST_CREATE,
+    SIGNAL_ACCOUNT_POST_LOGIN_FAIL,
     SIGNAL_OBJECT_POST_PUPPET,
     SIGNAL_OBJECT_POST_UNPUPPET,
 )
@@ -120,6 +122,80 @@ class AccountSessionHandler(object):
         return len(self.get())
 
 
+class CharactersHandler:
+    """
+    A simple Handler that lives on DefaultAccount as .characters via @lazy_property used to
+    wrap access to .db._playable_characters.
+    """
+
+    def __init__(self, owner: "DefaultAccount"):
+        """
+        Create the CharactersHandler.
+
+        Args:
+            owner: The Account that owns this handler.
+        """
+        self.owner = owner
+        self._ensure_playable_characters()
+        self._clean()
+
+    def _ensure_playable_characters(self):
+        if self.owner.db._playable_characters is None:
+            self.owner.db._playable_characters = []
+
+    def _clean(self):
+        # Remove all instances of None from the list.
+        self.owner.db._playable_characters = [x for x in self.owner.db._playable_characters if x]
+
+    def add(self, character: "DefaultCharacter"):
+        """
+        Add a character to this account's list of playable characters.
+
+        Args:
+            character (DefaultCharacter): The character to add.
+        """
+        self._clean()
+        if character not in self.owner.db._playable_characters:
+            self.owner.db._playable_characters.append(character)
+            self.owner.at_post_add_character(character)
+
+    def remove(self, character: "DefaultCharacter"):
+        """
+        Remove a character from this account's list of playable characters.
+
+        Args:
+            character (DefaultCharacter): The character to remove.
+        """
+        self._clean()
+        if character in self.owner.db._playable_characters:
+            self.owner.db._playable_characters.remove(character)
+            self.owner.at_post_remove_character(character)
+
+    def all(self) -> list["DefaultCharacter"]:
+        """
+        Get all playable characters.
+
+        Returns:
+            list[DefaultCharacter]: All playable characters.
+        """
+        self._clean()
+        return list(self.owner.db._playable_characters)
+
+    def count(self) -> int:
+        """
+        Get the number of playable characters.
+
+        Returns:
+            int: The number of playable characters.
+        """
+        return len(self.all())
+
+    __len__ = count
+
+    def __iter__(self):
+        return iter(self.all())
+
+
 class DefaultAccount(AccountDB, metaclass=TypeclassBase):
     """
     This is the base Typeclass for all Accounts. Accounts represent
@@ -189,7 +265,16 @@ class DefaultAccount(AccountDB, metaclass=TypeclassBase):
 
     """
 
+    # Determines which order command sets begin to be assembled from.
+    # Accounts are usually second.
+    cmdset_provider_order = 50
+    cmdset_provider_error_order = 0
+    cmdset_provider_type = "account"
+
     objects = AccountManager()
+
+    # Used by account.create_character() to choose default typeclass for characters.
+    default_character_typeclass = settings.BASE_CHARACTER_TYPECLASS
 
     # properties
     @lazy_property
@@ -219,22 +304,44 @@ class DefaultAccount(AccountDB, metaclass=TypeclassBase):
             load_kwargs={"category": "option"},
         )
 
-    # Do not make this a lazy property; the web UI will not refresh it!
-    @property
+    @lazy_property
     def characters(self):
-        # Get playable characters list
-        objs = self.db._playable_characters or []
+        return CharactersHandler(self)
 
-        # Rebuild the list if legacy code left null values after deletion
-        try:
-            if None in objs:
-                objs = [x for x in self.db._playable_characters if x]
-                self.db._playable_characters = objs
-        except Exception as e:
-            logger.log_trace(e)
-            logger.log_err(e)
+    def get_cmdset_providers(self) -> dict[str, "CmdSetProvider"]:
+        """
+        Overrideable method which returns a dictionary of every kind of object which
+        has a cmdsethandler linked to this Account, and should participate in cmdset
+        merging.
 
-        return objs
+        Accounts have no way of being aware of anything besides themselves, unfortunately.
+
+        Returns:
+            dict[str, CmdSetProvider]: The CmdSetProviders linked to this Object.
+        """
+        return {"account": self}
+
+    def at_post_add_character(self, character: "DefaultCharacter"):
+        """
+        Called after a character is added to this account's list of playable characters.
+
+        Use it to easily implement custom logic when a character is added to an account.
+
+        Args:
+            character (DefaultCharacter): The character that was added.
+        """
+        pass
+
+    def at_post_remove_character(self, character: "DefaultCharacter"):
+        """
+        Called after a character is removed from this account's list of playable characters.
+
+        Use it to easily implement custom logic when a character is removed from an account.
+
+        Args:
+            character (DefaultCharacter): The character that was removed.
+        """
+        pass
 
     def uses_screenreader(self, session=None):
         """
@@ -583,6 +690,7 @@ class DefaultAccount(AccountDB, metaclass=TypeclassBase):
             if session:
                 account = AccountDB.objects.get_account_from_name(username)
                 if account:
+                    SIGNAL_ACCOUNT_POST_LOGIN_FAIL.send(sender=account, session=session)
                     account.at_failed_login(session)
 
             return None, errors
@@ -700,6 +808,48 @@ class DefaultAccount(AccountDB, metaclass=TypeclassBase):
         logger.log_sec(f"Password successfully changed for {self}.")
         self.at_password_change()
 
+    def get_character_slots(self) -> typing.Optional[int]:
+        """
+        Returns the number of character slots this account has, or
+        None if there are no limits.
+
+        By default, that's settings.MAX_NR_CHARACTERS but this makes it easy to override.
+        Maybe for your game, players can be rewarded with more slots, somehow.
+
+        Returns:
+            int (optional): The number of character slots this account has, or None
+                if there are no limits.
+        """
+        return settings.MAX_NR_CHARACTERS
+
+    def get_available_character_slots(self) -> typing.Optional[int]:
+        """
+        Returns the number of character slots this account has available, or None if
+        there are no limits.
+
+        Returns:
+            int (optional): The number of open character slots this account has, or None
+                if there are no limits.
+        """
+        if (slots := self.get_character_slots()) is None:
+            return None
+        return max(0, slots - len(self.characters))
+
+    def check_available_slots(self, **kwargs) -> typing.Optional[str]:
+        """
+        Helper method used to determine if an account can create additional characters using
+        the character slot system.
+
+        Returns:
+            str (optional): An error message regarding the status of slots. If present, this
+               will halt character creation. If not, character creation can proceed.
+        """
+        if (slots := self.get_available_character_slots()) is not None:
+            if slots <= 0:
+                if not (self.is_superuser or self.check_permstring("Developer")):
+                    plural = "" if (max_slots := self.get_character_slots()) == 1 else "s"
+                    return f"You may only have a maximum of {max_slots} character{plural}."
+
     def create_character(self, *args, **kwargs):
         """
         Create a character linked to this account.
@@ -707,7 +857,7 @@ class DefaultAccount(AccountDB, metaclass=TypeclassBase):
         Args:
             key (str, optional): If not given, use the same name as the account.
             typeclass (str, optional): Typeclass to use for this character. If
-                not given, use settings.BASE_CHARACTER_TYPECLASS.
+                not given, use self.default_character_class.
             permissions (list, optional): If not given, use the account's permissions.
             ip (str, optional): The client IP creating this character. Will fall back to the
                 one stored for the account if not given.
@@ -717,16 +867,17 @@ class DefaultAccount(AccountDB, metaclass=TypeclassBase):
             list or None: A list of errors, or None.
 
         """
+        # check character slot usage.
+        if slot_check := self.check_available_slots():
+            return None, [slot_check]
+
         # parse inputs
         character_key = kwargs.pop("key", self.key)
         character_ip = kwargs.pop("ip", self.db.creator_ip)
         character_permissions = kwargs.pop("permissions", self.permissions)
 
         # Load the appropriate Character class
-        character_typeclass = kwargs.pop("typeclass", None)
-        character_typeclass = (
-            character_typeclass if character_typeclass else settings.BASE_CHARACTER_TYPECLASS
-        )
+        character_typeclass = kwargs.pop("typeclass", self.default_character_typeclass)
         Character = class_from_module(character_typeclass)
 
         if "location" not in kwargs:
@@ -742,13 +893,29 @@ class DefaultAccount(AccountDB, metaclass=TypeclassBase):
             **kwargs,
         )
         if character:
-            # Update playable character list
-            if character not in self.characters:
-                self.db._playable_characters.append(character)
+            self.at_post_create_character(character, ip=character_ip)
 
-            # We need to set this to have @ic auto-connect to this character
-            self.db._last_puppet = character
         return character, errs
+
+    def at_post_create_character(self, character, **kwargs):
+        """
+        An overloadable hook method that allows for further customization of newly created characters.
+        """
+        if character not in self.characters:
+            self.characters.add(character)
+
+        # We need to set this to have @ic auto-connect to this character
+        if len(self.characters) == 1:
+            self.db._last_puppet = character
+
+        character.locks.add(
+            f"puppet:id({character.id}) or pid({self.id}) or perm(Developer) or"
+            f" pperm(Developer);delete:id({self.id}) or perm(Admin)"
+        )
+
+        logger.log_sec(
+            f"Character Created: {character} (Caller: {self}, IP: {kwargs.get('ip', None)})."
+        )
 
     @classmethod
     def create(cls, *args, **kwargs):
@@ -873,7 +1040,7 @@ class DefaultAccount(AccountDB, metaclass=TypeclassBase):
                 # Auto-create a character to go with this account
 
                 character, errs = account.create_character(
-                    typeclass=kwargs.get("character_typeclass")
+                    typeclass=kwargs.get("character_typeclass", account.default_character_typeclass)
                 )
                 if errs:
                     errors.extend(errs)
@@ -1359,16 +1526,34 @@ class DefaultAccount(AccountDB, metaclass=TypeclassBase):
 
     def at_cmdset_get(self, **kwargs):
         """
-        Called just *before* cmdsets on this account are requested by
-        the command handler. The cmdsets are available as
-        `self.cmdset`. If changes need to be done on the fly to the
+        Called just before cmdsets on this object are requested by the
+        command handler. If changes need to be done on the fly to the
         cmdset before passing them on to the cmdhandler, this is the
-        place to do it.  This is called also if the account currently
-        have no cmdsets. kwargs are usually not used unless the
-        cmdset is generated dynamically.
+        place to do it. This is called also if the object currently
+        have no cmdsets.
+
+        Keyword Args:
+            caller (Object, Account or Session): The object requesting the cmdsets.
+            current (CmdSet): The current merged cmdset.
+            force_init (bool): If `True`, force a re-build of the cmdset. (seems unused)
+            **kwargs: Arbitrary input for overloads.
 
         """
         pass
+
+    def get_cmdsets(self, caller, current, **kwargs):
+        """
+        Called by the CommandHandler to get a list of cmdsets to merge.
+
+        Args:
+            caller (obj): The object requesting the cmdsets.
+            current (cmdset): The current merged cmdset.
+            **kwargs: Arbitrary input for overloads.
+
+        Returns:
+            tuple: A tuple of (current, cmdsets), which is probably self.cmdset.current and self.cmdset.cmdset_stack
+        """
+        return self.cmdset.current, list(self.cmdset.cmdset_stack)
 
     def at_first_login(self, **kwargs):
         """
@@ -1483,12 +1668,7 @@ class DefaultAccount(AccountDB, metaclass=TypeclassBase):
         else:
             # In this mode we don't auto-connect but by default end up at a character selection
             # screen. We execute look on the account.
-            # we make sure to clean up the _playable_characters list in case
-            # any was deleted in the interim.
-            self.db._playable_characters = [char for char in self.db._playable_characters if char]
-            self.msg(
-                self.at_look(target=self.db._playable_characters, session=session), session=session
-            )
+            self.msg(self.at_look(target=self.characters, session=session), session=session)
 
     def at_failed_login(self, session, **kwargs):
         """
@@ -1825,11 +2005,8 @@ class DefaultGuest(DefaultAccount):
         be on the safe side.
         """
         super().at_server_shutdown()
-        characters = self.db._playable_characters
-        if characters:
-            for character in characters:
-                if character:
-                    character.delete()
+        for character in self.characters:
+            character.delete()
 
     def at_post_disconnect(self, **kwargs):
         """
@@ -1841,8 +2018,6 @@ class DefaultGuest(DefaultAccount):
 
         """
         super().at_post_disconnect()
-        characters = self.db._playable_characters
-        for character in characters:
-            if character:
-                character.delete()
+        for character in self.characters:
+            character.delete()
         self.delete()
