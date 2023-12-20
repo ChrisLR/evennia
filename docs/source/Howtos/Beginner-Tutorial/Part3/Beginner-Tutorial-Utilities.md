@@ -244,11 +244,11 @@ testing `get_obj_stats`.
 # mygame/evadventure/tests/test_utils.py
 
 from evennia.utils import create 
-from evennia.utils.test_resources import BaseEvenniaTest 
+from evennia.utils.test_resources import EvenniaTest 
 
 from ..import utils
 
-class TestUtils(BaseEvenniaTest):
+class TestUtils(EvenniaTest):
     def test_get_obj_stats(self):
         # make a simple object to test with 
         obj = create.create_object(
@@ -275,7 +275,12 @@ Damage roll: |w1d6|n
 
 ```
 
-What happens here is that we create a new test-class `TestUtils` that inherits from `BaseEvenniaTest`.  This inheritance is what makes this a testing class.
+What happens here is that we create a new test-class `TestUtils` that inherits from `EvenniaTest`.  This inheritance is what makes this a testing class.
+
+
+```{important}
+It's useful for any game dev to know how to effectively test their code. So we'll try to include a *Testing* section at the end of each of the implementation lessons to follow. Writing tests for your code is optional but highly recommended. It can feel a little cumbersome or time-consuming at first ... but you'll thank yourself later.
+```
 
 
 ```{important}
