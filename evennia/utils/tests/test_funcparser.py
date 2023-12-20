@@ -10,10 +10,9 @@ from ast import literal_eval
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
+from evennia.utils import funcparser, test_resources
 from parameterized import parameterized
 from simpleeval import simple_eval
-
-from evennia.utils import funcparser, test_resources
 
 
 def _test_callable(*args, **kwargs):
@@ -113,7 +112,6 @@ class TestFuncParser(TestCase):
     """
 
     def setUp(self):
-
         self.parser = funcparser.FuncParser(_test_callables)
 
     def test_constructor_wrong_args(self):
@@ -451,6 +449,11 @@ class TestDefaultCallables(TestCase):
                 "You smile to yourself.",
                 "Char1 smiles to herself.",
             ),  # reverse reference
+            (
+                "$Your() smile is the greatest ever.",
+                "Your smile is the greatest ever.",
+                "Char1's smile is the greatest ever.",
+            ),
         ]
     )
     def test_conjugate(self, string, expected_you, expected_them):
@@ -466,6 +469,23 @@ class TestDefaultCallables(TestCase):
             string, caller=self.obj1, receiver=self.obj2, mapping=mapping, raise_errors=True
         )
         self.assertEqual(expected_them, ret)
+
+    def test_conjugate__non_existing_verb(self):
+        """
+        Test $conj() but with a nonsense verb. It should just return the verb as-is.
+
+        """
+        string = "$You() $conj(squanch) greatly."
+
+        mapping = {"char1": self.obj1, "char2": self.obj2}
+        ret = self.parser.parse(
+            string, caller=self.obj1, receiver=self.obj1, mapping=mapping, raise_errors=True
+        )
+        self.assertEqual("You squanch greatly.", ret)
+        ret = self.parser.parse(
+            string, caller=self.obj1, receiver=self.obj2, mapping=mapping, raise_errors=True
+        )
+        self.assertEqual("Char1 squanchs greatly.", ret)
 
     def test_conjugate_missing_args(self):
         string = "You $conj(smile)"

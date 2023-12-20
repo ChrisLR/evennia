@@ -3,6 +3,7 @@ EvAdventure character generation.
 
 """
 from django.conf import settings
+
 from evennia.objects.models import ObjectDB
 from evennia.prototypes.spawner import spawn
 from evennia.utils.create import create_object
@@ -316,7 +317,7 @@ def node_apply_character(caller, raw_string, **kwargs):
     """
     tmp_character = kwargs["tmp_character"]
     new_character = tmp_character.apply(caller)
-    caller.db._playable_characters.append(new_character)
+    caller.characters.add(new_character)
 
     text = "Character created!"
 

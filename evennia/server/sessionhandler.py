@@ -15,9 +15,9 @@ There are two similar but separate stores of sessions:
 import time
 from codecs import decode as codecs_decode
 
+import evennia
 from django.conf import settings
 from django.utils.translation import gettext as _
-
 from evennia.commands.cmdhandler import CMD_LOGINSTART
 from evennia.server.portal import amp
 from evennia.server.signals import (
@@ -27,13 +27,7 @@ from evennia.server.signals import (
     SIGNAL_ACCOUNT_POST_LOGOUT,
 )
 from evennia.utils.logger import log_trace
-from evennia.utils.utils import (
-    callables_from_module,
-    class_from_module,
-    delay,
-    is_iter,
-    make_iter,
-)
+from evennia.utils.utils import callables_from_module, class_from_module, delay, is_iter, make_iter
 
 _FUNCPARSER_PARSE_OUTGOING_MESSAGES_ENABLED = settings.FUNCPARSER_PARSE_OUTGOING_MESSAGES_ENABLED
 _BROADCAST_SERVER_RESTART_MESSAGES = settings.BROADCAST_SERVER_RESTART_MESSAGES
@@ -306,8 +300,7 @@ class ServerSessionHandler(SessionHandler):
 
         """
         super().__init__(*args, **kwargs)
-        self.server = None  # set at server initialization
-        self.server_data = {"servername": _SERVERNAME}
+        evennia.server_data = {"servername": _SERVERNAME}
         # will be set on psync
         self.portal_start_time = 0.0
 
@@ -411,7 +404,7 @@ class ServerSessionHandler(SessionHandler):
         mode = "reload"
 
         # tell the server hook we synced
-        self.server.at_post_portal_sync(mode)
+        evennia.EVENNIA_SERVER_SERVICE.at_post_portal_sync(mode)
         # announce the reconnection
         if _BROADCAST_SERVER_RESTART_MESSAGES:
             self.announce_all(_(" ... Server restarted."))
@@ -467,7 +460,7 @@ class ServerSessionHandler(SessionHandler):
             the Server.
 
         """
-        self.server.amp_protocol.send_AdminServer2Portal(
+        evennia.EVENNIA_SERVER_SERVICE.amp_protocol.send_AdminServer2Portal(
             DUMMYSESSION, operation=amp.SCONN, protocol_path=protocol_path, config=configdict
         )
 
@@ -476,14 +469,18 @@ class ServerSessionHandler(SessionHandler):
         Called by server when reloading. We tell the portal to start a new server instance.
 
         """
-        self.server.amp_protocol.send_AdminServer2Portal(DUMMYSESSION, operation=amp.SRELOAD)
+        evennia.EVENNIA_SERVER_SERVICE.amp_protocol.send_AdminServer2Portal(
+            DUMMYSESSION, operation=amp.SRELOAD
+        )
 
     def portal_reset_server(self):
         """
         Called by server when reloading. We tell the portal to start a new server instance.
 
         """
-        self.server.amp_protocol.send_AdminServer2Portal(DUMMYSESSION, operation=amp.SRESET)
+        evennia.EVENNIA_SERVER_SERVICE.amp_protocol.send_AdminServer2Portal(
+            DUMMYSESSION, operation=amp.SRESET
+        )
 
     def portal_shutdown(self):
         """
@@ -491,7 +488,9 @@ class ServerSessionHandler(SessionHandler):
         itself down)
 
         """
-        self.server.amp_protocol.send_AdminServer2Portal(DUMMYSESSION, operation=amp.PSHUTD)
+        evennia.EVENNIA_SERVER_SERVICE.amp_protocol.send_AdminServer2Portal(
+            DUMMYSESSION, operation=amp.PSHUTD
+        )
 
     def login(self, session, account, force=False, testmode=False):
         """
@@ -537,7 +536,7 @@ class ServerSessionHandler(SessionHandler):
         session.logged_in = True
         # sync the portal to the session
         if not testmode:
-            self.server.amp_protocol.send_AdminServer2Portal(
+            evennia.EVENNIA_SERVER_SERVICE.amp_protocol.send_AdminServer2Portal(
                 session, operation=amp.SLOGIN, sessiondata={"logged_in": True, "uid": session.uid}
             )
         account.at_post_login(session=session)
@@ -582,7 +581,7 @@ class ServerSessionHandler(SessionHandler):
             del self[sessid]
         if sync_portal:
             # inform portal that session should be closed.
-            self.server.amp_protocol.send_AdminServer2Portal(
+            evennia.EVENNIA_SERVER_SERVICE.amp_protocol.send_AdminServer2Portal(
                 session, operation=amp.SDISCONN, reason=reason
             )
 
@@ -593,7 +592,7 @@ class ServerSessionHandler(SessionHandler):
 
         """
         sessdata = self.get_all_sync_data()
-        return self.server.amp_protocol.send_AdminServer2Portal(
+        return evennia.EVENNIA_SERVER_SERVICE.amp_protocol.send_AdminServer2Portal(
             DUMMYSESSION, operation=amp.SSYNC, sessiondata=sessdata
         )
 
@@ -604,7 +603,7 @@ class ServerSessionHandler(SessionHandler):
 
         """
         sessdata = {session.sessid: session.get_sync_data()}
-        return self.server.amp_protocol.send_AdminServer2Portal(
+        return evennia.EVENNIA_SERVER_SERVICE.amp_protocol.send_AdminServer2Portal(
             DUMMYSESSION, operation=amp.SSYNC, sessiondata=sessdata, clean=False
         )
 
@@ -617,7 +616,7 @@ class ServerSessionHandler(SessionHandler):
                 more sessions in detail.
 
         """
-        return self.server.amp_protocol.send_AdminServer2Portal(
+        return evennia.EVENNIA_SERVER_SERVICE.amp_protocol.send_AdminServer2Portal(
             DUMMYSESSION, operation=amp.SSYNC, sessiondata=session_data, clean=False
         )
 
@@ -633,7 +632,7 @@ class ServerSessionHandler(SessionHandler):
         for session in self:
             del session
         # tell portal to disconnect all sessions
-        self.server.amp_protocol.send_AdminServer2Portal(
+        evennia.EVENNIA_SERVER_SERVICE.amp_protocol.send_AdminServer2Portal(
             DUMMYSESSION, operation=amp.SDISCONNALL, reason=reason
         )
 
@@ -784,7 +783,7 @@ class ServerSessionHandler(SessionHandler):
             sessions (list): The sessions with matching .csessid, if any.
 
         """
-        if csessid:
+        if not csessid:
             return []
         return [
             session for session in self.values() if session.csessid and session.csessid == csessid
@@ -817,7 +816,7 @@ class ServerSessionHandler(SessionHandler):
         kwargs = self.clean_senddata(session, kwargs)
 
         # send across AMP
-        self.server.amp_protocol.send_MsgServer2Portal(session, **kwargs)
+        evennia.EVENNIA_SERVER_SERVICE.amp_protocol.send_MsgServer2Portal(session, **kwargs)
 
     def get_inputfuncs(self):
         """

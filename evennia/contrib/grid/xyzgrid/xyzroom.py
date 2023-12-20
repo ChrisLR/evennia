@@ -70,7 +70,7 @@ class XYZManager(ObjectManager):
             .filter(
                 Q()
                 if z == wildcard
-                else Q(db_tags__db_key=str(z), db_tags__db_category=MAP_Z_TAG_CATEGORY)
+                else Q(db_tags__db_key__iexact=str(z), db_tags__db_category=MAP_Z_TAG_CATEGORY)
             )
         )
 
@@ -164,7 +164,7 @@ class XYZExitManager(XYZManager):
             .filter(
                 Q()
                 if z == wildcard
-                else Q(db_tags__db_key=str(z), db_tags__db_category=MAP_Z_TAG_CATEGORY)
+                else Q(db_tags__db_key__iexact=str(z), db_tags__db_category=MAP_Z_TAG_CATEGORY)
             )
             .filter(
                 Q()
@@ -179,7 +179,9 @@ class XYZExitManager(XYZManager):
             .filter(
                 Q()
                 if zdest == wildcard
-                else Q(db_tags__db_key=str(zdest), db_tags__db_category=MAP_ZDEST_TAG_CATEGORY)
+                else Q(
+                    db_tags__db_key__iexact=str(zdest), db_tags__db_category=MAP_ZDEST_TAG_CATEGORY
+                )
             )
         )
 
@@ -219,12 +221,14 @@ class XYZExitManager(XYZManager):
 
         try:
             return (
-                self.filter(db_tags__db_key=str(z), db_tags__db_category=MAP_Z_TAG_CATEGORY)
+                self.filter(db_tags__db_key__iexact=str(z), db_tags__db_category=MAP_Z_TAG_CATEGORY)
                 .filter(db_tags__db_key=str(x), db_tags__db_category=MAP_X_TAG_CATEGORY)
                 .filter(db_tags__db_key=str(y), db_tags__db_category=MAP_Y_TAG_CATEGORY)
                 .filter(db_tags__db_key=str(xdest), db_tags__db_category=MAP_XDEST_TAG_CATEGORY)
                 .filter(db_tags__db_key=str(ydest), db_tags__db_category=MAP_YDEST_TAG_CATEGORY)
-                .filter(db_tags__db_key=str(zdest), db_tags__db_category=MAP_ZDEST_TAG_CATEGORY)
+                .filter(
+                    db_tags__db_key__iexact=str(zdest), db_tags__db_category=MAP_ZDEST_TAG_CATEGORY
+                )
                 .get(**kwargs)
             )
         except self.model.DoesNotExist:
@@ -440,7 +444,6 @@ class XYZRoom(DefaultRoom):
         xymap = self.xyzgrid.get_map(xyz[2])
 
         if xymap and kwargs.get("map_display", xymap.options.get("map_display", self.map_display)):
-
             # show the near-area map.
             map_character_symbol = kwargs.get(
                 "map_character_symbol",

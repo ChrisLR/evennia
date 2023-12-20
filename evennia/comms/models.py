@@ -21,6 +21,7 @@ necessary to easily be able to delete connections on the fly).
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+
 from evennia.comms import managers
 from evennia.locks.lockhandler import LockHandler
 from evennia.typeclasses.models import TypedObject
@@ -645,8 +646,6 @@ class SubscriptionHandler:
             from django.core.exceptions import ObjectDoesNotExist
 
             try:
-                if hasattr(obj, "account") and obj.account:
-                    obj = obj.account
                 if not obj.is_connected:
                     continue
             except ObjectDoesNotExist:

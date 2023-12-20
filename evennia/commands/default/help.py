@@ -13,13 +13,20 @@ from dataclasses import dataclass
 from itertools import chain
 
 from django.conf import settings
+
 from evennia.help.filehelp import FILE_HELP_ENTRIES
 from evennia.help.models import HelpEntry
 from evennia.help.utils import help_search_with_index, parse_entry_for_subcategories
 from evennia.utils import create, evmore
 from evennia.utils.ansi import ANSIString
 from evennia.utils.eveditor import EvEditor
-from evennia.utils.utils import class_from_module, dedent, format_grid, inherits_from, pad
+from evennia.utils.utils import (
+    class_from_module,
+    dedent,
+    format_grid,
+    inherits_from,
+    pad,
+)
 
 CMD_IGNORE_PREFIXES = settings.CMD_IGNORE_PREFIXES
 COMMAND_DEFAULT_CLASS = class_from_module(settings.COMMAND_DEFAULT_CLASS)
@@ -112,8 +119,8 @@ class CmdHelp(COMMAND_DEFAULT_CLASS):
             usemore = True
 
             if self.session and self.session.protocol_key in (
-                "websocket",
-                "ajax/comet",
+                "webclient/websocket",
+                "webclient/ajax",
             ):
                 try:
                     options = self.account.db._saved_webclient_options

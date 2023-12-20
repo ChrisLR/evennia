@@ -36,6 +36,7 @@ the `caller.msg()` construct every time the page is updated.
 ----
 
 """
+import evennia
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db.models.query import QuerySet
@@ -77,7 +78,7 @@ class CmdMore(Command):
         Implement the command
         """
         more = self.caller.ndb._more
-        if not more and hasattr(self.caller, "account"):
+        if not more and inherits_from(self.caller, evennia.DefaultObject):
             more = self.caller.account.ndb._more
         if not more:
             self.caller.msg("Error in loading the pager. Contact an admin.")
@@ -192,9 +193,9 @@ class EvMore(object):
                 the evmore commands will be available when this is run).
             kwargs (any, optional): These will be passed on to the `caller.msg` method. Notably,
                 one can pass additional outputfuncs this way. There is one special kwarg:
-                - text_kwargs - extra kwargs to pass with the text outputfunc, e.g.
-                  `text_kwargs={"type": "help"} would result to each page being sent
-                  to `msg` as `text=(pagetxt, {"type": "help"})`.
+                - `text_kwargs` - extra kwargs to pass with the text outputfunc, e.g.
+                `text_kwargs={"type": "help"}` would result to each page being sent
+                to `msg` as `text=(pagetxt, {"type": "help"})`.
 
         Examples:
 

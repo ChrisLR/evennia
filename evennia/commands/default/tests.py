@@ -17,6 +17,9 @@ from unittest.mock import MagicMock, Mock, patch
 from anything import Anything
 from django.conf import settings
 from django.test import override_settings
+from parameterized import parameterized
+from twisted.internet import task
+
 import evennia
 from evennia import (
     DefaultCharacter,
@@ -29,7 +32,14 @@ from evennia import (
 from evennia.commands import cmdparser
 from evennia.commands.cmdset import CmdSet
 from evennia.commands.command import Command, InterruptCommand
-from evennia.commands.default import account, admin, batchprocess, building, comms, general
+from evennia.commands.default import (
+    account,
+    admin,
+    batchprocess,
+    building,
+    comms,
+    general,
+)
 from evennia.commands.default import help as help_module
 from evennia.commands.default import syscommands, system, unloggedin
 from evennia.commands.default.cmdset_character import CharacterCmdSet
@@ -38,8 +48,6 @@ from evennia.prototypes import prototypes as protlib
 from evennia.utils import create, gametime, utils
 from evennia.utils.test_resources import BaseEvenniaCommandTest  # noqa
 from evennia.utils.test_resources import BaseEvenniaTest, EvenniaCommandTest
-from parameterized import parameterized
-from twisted.internet import task
 
 # ------------------------------------------------------------
 # Command testing
@@ -589,7 +597,7 @@ class TestAccount(BaseEvenniaCommandTest):
         ]
     )
     def test_ooc_look(self, multisession_mode, auto_puppet, max_nr_chars, expected_result):
-        self.account.db._playable_characters = [self.char1]
+        self.account.characters.add(self.char1)
         self.account.unpuppet_all()
 
         with self.settings(MULTISESSION=multisession_mode):
@@ -609,14 +617,14 @@ class TestAccount(BaseEvenniaCommandTest):
         self.call(account.CmdOOC(), "", "You go OOC.", caller=self.account)
 
     def test_ic(self):
-        self.account.db._playable_characters = [self.char1]
+        self.account.characters.add(self.char1)
         self.account.unpuppet_object(self.session)
         self.call(
             account.CmdIC(), "Char", "You become Char.", caller=self.account, receiver=self.char1
         )
 
     def test_ic__other_object(self):
-        self.account.db._playable_characters = [self.obj1]
+        self.account.characters.add(self.obj1)
         self.account.unpuppet_object(self.session)
         self.call(
             account.CmdIC(), "Obj", "You become Obj.", caller=self.account, receiver=self.obj1
@@ -670,7 +678,7 @@ class TestAccount(BaseEvenniaCommandTest):
         # whether permissions are being checked
 
         # Add char to account playable characters
-        self.account.db._playable_characters.append(self.char1)
+        self.account.characters.add(self.char1)
 
         # Try deleting as Developer
         self.call(
@@ -717,16 +725,17 @@ class TestAccount(BaseEvenniaCommandTest):
 
 class TestBuilding(BaseEvenniaCommandTest):
     def test_create(self):
-        name = settings.BASE_OBJECT_TYPECLASS.rsplit(".", 1)[1]
+        typeclass = settings.BASE_OBJECT_TYPECLASS
+        name = typeclass.rsplit(".", 1)[1]
         self.call(
             building.CmdCreate(),
-            "/d TestObj1",  # /d switch is abbreviated form of /drop
+            f"/d TestObj1:{typeclass}",  # /d switch is abbreviated form of /drop
             "You create a new %s: TestObj1." % name,
         )
         self.call(building.CmdCreate(), "", "Usage: ")
         self.call(
             building.CmdCreate(),
-            "TestObj1;foo;bar",
+            f"TestObj1;foo;bar:{typeclass}",
             "You create a new %s: TestObj1 (aliases: foo, bar)." % name,
         )
 
@@ -1597,8 +1606,9 @@ class TestBuilding(BaseEvenniaCommandTest):
         self.call(
             building.CmdTeleport(),
             "Obj = Room2",
-            "Obj(#{}) is leaving Room(#{}), heading for Room2(#{}).|Teleported Obj -> Room2."
-            .format(oid, rid, rid2),
+            "Obj(#{}) is leaving Room(#{}), heading for Room2(#{}).|Teleported Obj -> Room2.".format(
+                oid, rid, rid2
+            ),
         )
         self.call(building.CmdTeleport(), "NotFound = Room", "Could not find 'NotFound'.")
         self.call(
@@ -1714,8 +1724,7 @@ class TestBuilding(BaseEvenniaCommandTest):
         self.call(
             building.CmdSpawn(),
             "{'prototype_key':'GOBLIN', 'typeclass':'evennia.objects.objects.DefaultCharacter', "
-            "'key':'goblin', 'location':'%s'}"
-            % spawnLoc.dbref,
+            "'key':'goblin', 'location':'%s'}" % spawnLoc.dbref,
             "Spawned goblin",
         )
         goblin = get_object(self, "goblin")
@@ -1763,8 +1772,7 @@ class TestBuilding(BaseEvenniaCommandTest):
         self.call(
             building.CmdSpawn(),
             "/noloc {'prototype_parent':'TESTBALL', 'key': 'Ball', 'prototype_key': 'foo',"
-            " 'location':'%s'}"
-            % spawnLoc.dbref,
+            " 'location':'%s'}" % spawnLoc.dbref,
             "Spawned Ball",
         )
         ball = get_object(self, "Ball")
@@ -2075,7 +2083,7 @@ class TestBatchProcess(BaseEvenniaCommandTest):
         # cannot test batchcode here, it must run inside the server process
         self.call(
             batchprocess.CmdBatchCommands(),
-            "batchprocessor.example_batch_cmds",
+            "batchprocessor.example_batch_cmds_test",
             "Running Batch-command processor - Automatic mode for"
             " batchprocessor.example_batch_cmds",
         )

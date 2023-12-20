@@ -5,6 +5,7 @@ import re
 
 from django.conf import settings
 
+import evennia
 from evennia.typeclasses.attributes import NickTemplateInvalid
 from evennia.utils import utils
 
@@ -173,7 +174,6 @@ class CmdNick(COMMAND_DEFAULT_CLASS):
         )
 
         if "list" in switches or self.cmdstring in ("nicks",):
-
             if not nicklist:
                 string = "|wNo nicks defined.|n"
             else:
@@ -377,7 +377,7 @@ class CmdInventory(COMMAND_DEFAULT_CLASS):
                     "{}|n".format(utils.crop(raw_ansi(item.db.desc or ""), width=50) or ""),
                 )
             string = f"|wYou are carrying:\n{table}"
-        self.caller.msg(text=(string, {"type": "inventory"}))
+        self.msg(text=(string, {"type": "inventory"}))
 
 
 class CmdGet(COMMAND_DEFAULT_CLASS):
@@ -555,11 +555,11 @@ class CmdSetDesc(COMMAND_DEFAULT_CLASS):
         """add the description"""
 
         if not self.args:
-            self.caller.msg("You must add a description.")
+            self.msg("You must add a description.")
             return
 
         self.caller.db.desc = self.args.strip()
-        self.caller.msg("You set your description.")
+        self.msg("You set your description.")
 
 
 class CmdSay(COMMAND_DEFAULT_CLASS):
@@ -686,7 +686,7 @@ class CmdPose(COMMAND_DEFAULT_CLASS):
         """Hook function"""
         if not self.args:
             msg = "What do you want to do?"
-            self.caller.msg(msg)
+            self.msg(msg)
         else:
             msg = f"{self.caller.name}{self.args}"
             self.caller.location.msg_contents(text=(msg, {"type": "pose"}), from_obj=self.caller)
@@ -724,6 +724,6 @@ class CmdAccess(COMMAND_DEFAULT_CLASS):
 
         string += "\n|wYour access|n:"
         string += f"\nCharacter |c{caller.key}|n: {cperms}"
-        if hasattr(caller, "account"):
+        if utils.inherits_from(caller, evennia.DefaultObject):
             string += f"\nAccount |c{caller.account.key}|n: {pperms}"
         caller.msg(string)

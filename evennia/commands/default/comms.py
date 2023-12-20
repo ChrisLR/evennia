@@ -8,6 +8,7 @@ Communication commands:
 """
 
 from django.conf import settings
+
 from evennia.accounts import bots
 from evennia.accounts.models import AccountDB
 from evennia.comms.comms import DefaultChannel
@@ -311,7 +312,7 @@ class CmdChannel(COMMAND_DEFAULT_CLASS):
 
         """
         if not channel.access(self.caller, "send"):
-            self.caller.msg(f"You are not allowed to send messages to channel {channel}")
+            self.msg(f"You are not allowed to send messages to channel {channel}")
             return
 
         # avoid unsafe tokens in message
@@ -1275,7 +1276,7 @@ class CmdChannel(COMMAND_DEFAULT_CLASS):
 
             target = caller.search(target_str, candidates=banlists)
             if not target:
-                self.msg("Could not find a banned user '{target_str}' in given channel(s).")
+                self.msg(f"Could not find a banned user '{target_str}' in given channel(s).")
                 return
 
             for chan in channels:
@@ -1627,7 +1628,7 @@ class CmdIRC2Chan(COMMAND_DEFAULT_CLASS):
             irc_port=irc_port,
             irc_ssl=irc_ssl,
         )
-        self.msg("Connection created. Beginner-Tutorial IRC bot.")
+        self.msg("Connection created. Starting IRC bot.")
 
 
 class CmdIRCStatus(COMMAND_DEFAULT_CLASS):
@@ -1683,21 +1684,21 @@ class CmdIRCStatus(COMMAND_DEFAULT_CLASS):
         chtext = f"IRC bot '{ircbot.db.irc_botname}' on channel {channel} ({network}:{port})"
         if option == "ping":
             # check connection by sending outself a ping through the server.
-            self.caller.msg(f"Pinging through {chtext}.")
+            self.msg(f"Pinging through {chtext}.")
             ircbot.ping(self.caller)
         elif option in ("users", "nicklist", "who"):
             # retrieve user list. The bot must handles the echo since it's
             # an asynchronous call.
-            self.caller.msg(f"Requesting nicklist from {channel} ({network}:{port}).")
+            self.msg(f"Requesting nicklist from {channel} ({network}:{port}).")
             ircbot.get_nicklist(self.caller)
         elif self.caller.locks.check_lockstring(
             self.caller, "dummy:perm(ircstatus) or perm(Developer)"
         ):
             # reboot the client
-            self.caller.msg(f"Forcing a disconnect + reconnect of {chtext}.")
+            self.msg(f"Forcing a disconnect + reconnect of {chtext}.")
             ircbot.reconnect()
         else:
-            self.caller.msg("You don't have permission to force-reload the IRC bot.")
+            self.msg("You don't have permission to force-reload the IRC bot.")
 
 
 # RSS connection
@@ -1801,7 +1802,7 @@ class CmdRSS2Chan(COMMAND_DEFAULT_CLASS):
             # re-use existing bot
             bot = bot[0]
             if not bot.is_bot:
-                self.msg("Account '{botname}' already exists and is not a bot.")
+                self.msg(f"Account '{botname}' already exists and is not a bot.")
                 return
         else:
             # create a new bot

@@ -1258,6 +1258,7 @@ class GenericBuildingCmd(Command):
     """
 
     key = "@edit"
+    help_category = "Building"
 
     def func(self):
         if not self.args.strip():

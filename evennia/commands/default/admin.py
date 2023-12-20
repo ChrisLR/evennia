@@ -9,9 +9,8 @@ import time
 
 from django.conf import settings
 
-from evennia.server.models import ServerConfig
-
 import evennia
+from evennia.server.models import ServerConfig
 from evennia.utils import class_from_module, evtable, logger, search
 
 COMMAND_DEFAULT_CLASS = class_from_module(settings.COMMAND_DEFAULT_CLASS)
@@ -193,7 +192,7 @@ class CmdBan(COMMAND_DEFAULT_CLASS):
         if not self.args or (
             self.switches and not any(switch in ("ip", "name") for switch in self.switches)
         ):
-            self.caller.msg(list_bans(self, banlist))
+            self.msg(list_bans(self, banlist))
             return
 
         now = time.ctime()
@@ -220,13 +219,13 @@ class CmdBan(COMMAND_DEFAULT_CLASS):
 
         ret = yield (f"Are you sure you want to {typ}-ban '|w{ban}|n' [Y]/N?")
         if str(ret).lower() in ("no", "n"):
-            self.caller.msg("Aborted.")
+            self.msg("Aborted.")
             return
 
         # save updated banlist
         banlist.append(bantup)
         ServerConfig.objects.conf("server_bans", banlist)
-        self.caller.msg(f"{typ}-ban '|w{ban}|n' was added. Use |wunban|n to reinstate.")
+        self.msg(f"{typ}-ban '|w{ban}|n' was added. Use |wunban|n to reinstate.")
         logger.log_sec(
             f"Banned {typ}: {ban.strip()} (Caller: {self.caller}, IP: {self.session.address})."
         )
@@ -256,19 +255,19 @@ class CmdUnban(COMMAND_DEFAULT_CLASS):
         banlist = ServerConfig.objects.conf("server_bans")
 
         if not self.args:
-            self.caller.msg(list_bans(self, banlist))
+            self.msg(list_bans(self, banlist))
             return
 
         try:
             num = int(self.args)
         except Exception:
-            self.caller.msg("You must supply a valid ban id to clear.")
+            self.msg("You must supply a valid ban id to clear.")
             return
 
         if not banlist:
-            self.caller.msg("There are no bans to clear.")
+            self.msg("There are no bans to clear.")
         elif not (0 < num < len(banlist) + 1):
-            self.caller.msg(f"Ban id |w{self.args}|n was not found.")
+            self.msg(f"Ban id |w{self.args}|n was not found.")
         else:
             # all is ok, ask, then clear ban
             ban = banlist[num - 1]
@@ -276,12 +275,12 @@ class CmdUnban(COMMAND_DEFAULT_CLASS):
 
             ret = yield (f"Are you sure you want to unban {num}: '|w{value}|n' [Y]/N?")
             if str(ret).lower() in ("n", "no"):
-                self.caller.msg("Aborted.")
+                self.msg("Aborted.")
                 return
 
             del banlist[num - 1]
             ServerConfig.objects.conf("server_bans", banlist)
-            self.caller.msg(f"Cleared ban {num}: '{value}'")
+            self.msg(f"Cleared ban {num}: '{value}'")
             logger.log_sec(
                 f"Unbanned: {value.strip()} (Caller: {self.caller}, IP: {self.session.address})."
             )
@@ -512,7 +511,6 @@ class CmdPerm(COMMAND_DEFAULT_CLASS):
             permissions = obj.permissions.all()
 
             for perm in self.rhslist:
-
                 # don't allow to set a permission higher in the hierarchy than
                 # the one the caller has (to prevent self-escalation)
                 if perm.lower() in PERMISSION_HIERARCHY and not obj.locks.check_lockstring(
@@ -561,7 +559,7 @@ class CmdWall(COMMAND_DEFAULT_CLASS):
     def func(self):
         """Implements command"""
         if not self.args:
-            self.caller.msg("Usage: wall <message>")
+            self.msg("Usage: wall <message>")
             return
         message = f'{self.caller.name} shouts "{self.args}"'
         self.msg("Announcing to all connected sessions ...")
@@ -587,13 +585,13 @@ class CmdForce(COMMAND_DEFAULT_CLASS):
     def func(self):
         """Implements the force command"""
         if not self.lhs or not self.rhs:
-            self.caller.msg("You must provide a target and a command string to execute.")
+            self.msg("You must provide a target and a command string to execute.")
             return
         targ = self.caller.search(self.lhs)
         if not targ:
             return
         if not targ.access(self.caller, self.perm_used):
-            self.caller.msg(f"You don't have permission to force {targ} to execute commands.")
+            self.msg(f"You don't have permission to force {targ} to execute commands.")
             return
         targ.execute_cmd(self.rhs)
-        self.caller.msg(f"You have forced {targ} to: {self.rhs}")
+        self.msg(f"You have forced {targ} to: {self.rhs}")

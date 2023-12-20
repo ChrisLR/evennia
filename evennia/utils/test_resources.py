@@ -26,27 +26,21 @@ import re
 import sys
 import types
 
+import evennia
 from django.conf import settings
 from django.test import TestCase, override_settings
-from mock import MagicMock, Mock, patch
-from twisted.internet.defer import Deferred
-
-import evennia
 from evennia import settings_default
 from evennia.accounts.accounts import DefaultAccount
 from evennia.commands.command import InterruptCommand
 from evennia.commands.default.muxcommand import MuxCommand
-from evennia.objects.objects import (
-    DefaultCharacter,
-    DefaultExit,
-    DefaultObject,
-    DefaultRoom,
-)
+from evennia.objects.objects import DefaultCharacter, DefaultExit, DefaultObject, DefaultRoom
 from evennia.scripts.scripts import DefaultScript
 from evennia.server.serversession import ServerSession
 from evennia.utils import ansi, create
 from evennia.utils.idmapper.models import flush_cache
 from evennia.utils.utils import all_from_module, to_str
+from mock import MagicMock, Mock, patch
+from twisted.internet.defer import Deferred
 
 _RE_STRIP_EVMENU = re.compile(r"^\+|-+\+|\+-+|--+|\|(?:\s|$)", re.MULTILINE)
 
@@ -101,8 +95,10 @@ DEFAULT_SETTING_RESETS = dict(
         "evennia.game_template.server.conf.prototypefuncs",
     ],
     BASE_GUEST_TYPECLASS="evennia.accounts.accounts.DefaultGuest",
-    # a special setting boolean _TEST_ENVIRONMENT is set by the test runner
+    # a special setting boolean TEST_ENVIRONMENT is set by the test runner
     # while the test suite is running.
+    DEFAULT_HOME="#1",
+    TEST_ENVIRONMENT=True,
 )
 
 DEFAULT_SETTINGS = {**all_from_module(settings_default), **DEFAULT_SETTING_RESETS}
@@ -196,9 +192,7 @@ class EvenniaTestMixin:
             self.account2.delete()
 
     # Set up fake prototype module for allowing tests to use named prototypes.
-    @override_settings(
-        PROTOTYPE_MODULES=["evennia.utils.tests.data.prototypes_example"], DEFAULT_HOME="#1"
-    )
+    @override_settings(PROTOTYPE_MODULES=["evennia.utils.tests.data.prototypes_example"])
     def create_rooms(self):
         self.room1 = create.create_object(self.room_typeclass, key="Room", nohome=True)
         self.room1.db.desc = "room_desc"
@@ -268,6 +262,7 @@ class EvenniaTestMixin:
         self.create_script()
         self.setup_session()
 
+    @override_settings(PROTOTYPE_MODULES=["evennia.utils.tests.data.prototypes_example"])
     def tearDown(self):
         flush_cache()
         try:
@@ -553,6 +548,10 @@ class BaseEvenniaTestCase(TestCase):
 
     """
 
+    def tearDown(self) -> None:
+        super().tearDown()
+        flush_cache()
+
 
 class EvenniaTestCase(TestCase):
     """
@@ -570,6 +569,7 @@ class EvenniaTestCase(TestCase):
     """
 
     def tearDown(self) -> None:
+        super().tearDown()
         flush_cache()
 
 
@@ -607,6 +607,7 @@ class EvenniaTest(EvenniaTestMixin, TestCase):
 @patch("evennia.commands.syscommands.COMMAND_DEFAULT_CLASS", MuxCommand)
 @patch("evennia.commands.system.COMMAND_DEFAULT_CLASS", MuxCommand)
 @patch("evennia.commands.unloggedin.COMMAND_DEFAULT_CLASS", MuxCommand)
+@override_settings(**DEFAULT_SETTINGS)
 class BaseEvenniaCommandTest(BaseEvenniaTest, EvenniaCommandTestMixin):
     """
     Commands only using the default settings.

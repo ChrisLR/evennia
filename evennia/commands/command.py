@@ -11,6 +11,7 @@ import re
 from django.conf import settings
 from django.urls import reverse
 from django.utils.text import slugify
+
 from evennia.locks.lockhandler import LockHandler
 from evennia.utils.ansi import ANSIString
 from evennia.utils.evtable import EvTable
@@ -155,9 +156,10 @@ class Command(metaclass=CommandMeta):
                      you to know which alias was used, for example)
     self.args - everything supplied to the command following the cmdstring
                (this is usually what is parsed in self.parse())
-    self.cmdset - the cmdset from which this command was matched (useful only
+    self.cmdset - the merged cmdset from which this command was matched (useful only
                   seldomly, notably for help-type commands, to create dynamic
                   help entries and lists)
+    self.cmdset_source - the specific cmdset this command was matched from.
     self.obj - the object on which this command is defined. If a default command,
                this is usually the same as caller.
     self.raw_string - the full raw string input, including the command name,
@@ -509,7 +511,7 @@ Command {self} has no defined `func()` - showing on-command variables:
             % (self.cmdset.key if self.cmdset.key else self.cmdset.__class__)
         )
 
-        self.caller.msg(string)
+        self.msg(string)
 
     def func(self):
         """
