@@ -20,7 +20,7 @@ author = "The Evennia developer community"
 
 # The full Evennia version covered by these docs, including alpha/beta/rc tags
 # This will be used for multi-version selection options.
-release = "2.x"
+release = "latest"
 
 # -- General configuration ---------------------------------------------------
 
@@ -61,8 +61,9 @@ smv_tag_whitelist = r"^$"
 # used to fill in versioning.html links for versions that are not actually built.
 # These are also read from the deploy.py script. These are also the names of
 # the folders built in the gh-pages evennia branch, under docs/.
-latest_version = "2.x"
-legacy_versions = ["1.3.0", "0.9.5"]
+latest_version = "latest"
+legacy_versions = ["3.x", "2.x", "1.x", "0.x"]
+legacy_branches = ["v3.0.0", "v2.0.0", "v1.0.0", "v0.9.5"]
 
 
 def add_legacy_versions_to_html_page_context(app, pagename, templatename, context, doctree):
@@ -71,10 +72,10 @@ def add_legacy_versions_to_html_page_context(app, pagename, templatename, contex
     # set this when building legacy docs, to show the 'you are reading an old version' headers
     current_is_legacy = False
 
-    LVersion = namedtuple("legacy_version", ["release", "name", "url"])
+    LVersion = namedtuple("legacy_version", ["release", "name", "url", "branch"])
     context["legacy_versions"] = [
-        LVersion(release=f"{vers}", name=f"v{vers}", url=f"../{vers}/index.html")
-        for vers in legacy_versions
+        LVersion(release=f"{vers}", name=f"v{vers}", url=f"../../{vers}/index.html", branch=branch)
+        for (vers, branch) in zip(legacy_versions, legacy_branches)
     ]
     context["current_is_legacy"] = current_is_legacy
 
