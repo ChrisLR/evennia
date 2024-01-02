@@ -123,12 +123,12 @@ class TagField:
         """
         instance.host.tags.clear(category=self._category_key)
 
-    def at_added(self, instance):
+    def at_added(self, component):
         if self._default:
-            self.__set__(instance, self._default)
+            self.__set__(component, self._default)
 
-    def at_removed(self, instance):
-        self.__delete__(instance)
+    def at_removed(self, component):
+        self.__delete__(component)
 
 
 class HostField(DBField):
