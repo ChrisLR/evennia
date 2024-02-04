@@ -109,6 +109,73 @@ class ParsingError(RuntimeError):
     pass
 
 
+class FuncParseNode:
+    __slots__ = ('text_key', 'nodes')
+
+    def __init__(self, text_key: str):
+        self.text_key = text_key
+        self.nodes = []
+
+    def parse(self):
+        callable_index = self.text_key.find("$")
+        if callable_index == -1:
+            self.add_node(FuncParseTextNode(self.text_key))
+            return
+
+        if callable_index > 0:
+            text_part = self.text_key[:callable_index]
+            self.add_node(FuncParseTextNode(text_part))
+            unparsed_part = self.text_key[callable_index:]
+        else:
+            unparsed_part = self.text_key
+
+        current_node = self
+        while callable_index:
+            open_index = unparsed_part.find('(')
+            callable_name = unparsed_part[callable_index: open_index]
+
+
+
+
+
+    def add_node(self, node):
+        self.nodes.append(node)
+
+    def eval(self, reserved_kwargs, return_str=True):
+        return "".join((node.eval(reserved_kwargs, return_str=True)) for node in self.nodes)
+
+
+class FuncParseTextNode(FuncParseNode):
+    def eval(self, reserved_kwargs, return_str=True):
+        return f"{self.text_key}{''.join((node.eval(reserved_kwargs, return_str=True)) for node in self.nodes)}"
+
+
+class FuncParseCallableNode:
+    __slots__ = ('text_key', 'callable', 'arg_nodes', 'kwarg_nodes')
+
+    def __init__(self, text_key, callable):
+        super().__init__(text_key)
+        self.callable = callable
+        self.arg_nodes = []
+        self.kwarg_nodes = {}
+
+    def add_arg_node(self, arg_node):
+        self.arg_nodes.append(arg_node)
+
+    def add_kwarg_node(self, key, kwarg_node):
+        self.kwarg_nodes[key] = kwarg_node
+
+    def eval(self, reserved_kwargs, return_str=True):
+        arg_nodes = (arg_node.eval(reserved_kwargs, return_str=True) for arg_node in self.arg_nodes)
+        kwarg_nodes = {key: node.eval(reserved_kwargs, return_str=True) for key, node in self.kwarg_nodes.items()}
+        kwarg_nodes.update(reserved_kwargs)
+        value = self.callable(*arg_nodes, **kwarg_nodes)
+        if return_str:
+            return str(value)
+
+        return value
+
+
 class FuncParser:
     """
     Sets up a parser for strings containing `$funcname(*args, **kwargs)`
@@ -177,6 +244,7 @@ class FuncParser:
         self.escape_char = escape_char
         self.start_char = start_char
         self.default_kwargs = default_kwargs
+        self.parser_cache = {}
 
     def validate_callables(self, callables):
         """
@@ -311,6 +379,10 @@ class FuncParser:
             ParsingError: If a problem is encountered and `raise_errors` is True.
 
         """
+        parsed_nodes_root = self.parser_cache.get(string)
+        if parsed_nodes_root:
+            return parsed_nodes_root.eval(**reserved_kwargs, return_str=return_str)
+
         start_char = self.start_char
         escape_char = self.escape_char
 
@@ -332,6 +404,8 @@ class FuncParser:
         fullstr = ""  # final string
         infuncstr = ""  # string parts inside the current level of $funcdef (including $)
         literal_infuncstr = False
+
+        current_node = None
 
         for char in string:
             if escaped:

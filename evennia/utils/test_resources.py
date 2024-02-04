@@ -197,7 +197,7 @@ class EvenniaTestMixin:
         self.room1 = create.create_object(self.room_typeclass, key="Room", nohome=True)
         self.room1.db.desc = "room_desc"
 
-        self.room2 = create.create_object(self.room_typeclass, key="Room2")
+        self.room2 = create.create_object(self.room_typeclass, key="Room2", nohome=True)
         self.exit = create.create_object(
             self.exit_typeclass, key="out", location=self.room1, destination=self.room2
         )
