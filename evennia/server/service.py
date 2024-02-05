@@ -152,8 +152,7 @@ class EvenniaServerService(MultiService):
         except OperationalError:
             print("Server server_starting_mode couldn't be set - database not set up.")
 
-        if settings.AMP_ENABLED:
-            self.register_amp()
+        self.register_amp()
 
         if settings.WEBSERVER_ENABLED:
             self.register_webserver()
@@ -483,7 +482,7 @@ class EvenniaServerService(MultiService):
 
         # initialize and start global scripts
         evennia.GLOBAL_SCRIPTS.start()
-    
+
     @defer.inlineCallbacks
     def shutdown(self, mode="reload", _reactor_stopping=False):
         """
@@ -552,6 +551,11 @@ class EvenniaServerService(MultiService):
         from evennia.scripts.tickerhandler import TICKER_HANDLER
 
         TICKER_HANDLER.save()
+
+        # on-demand handler state should always be saved.
+        from evennia.scripts.ondemandhandler import ON_DEMAND_HANDLER
+
+        ON_DEMAND_HANDLER.save()
 
         # always called, also for a reload
         self.at_server_stop()
@@ -643,6 +647,11 @@ class EvenniaServerService(MultiService):
 
         TASK_HANDLER.load()
         TASK_HANDLER.create_delays()
+
+        # start the On-demand handler
+        from evennia.scripts.ondemandhandler import ON_DEMAND_HANDLER
+
+        ON_DEMAND_HANDLER.load()
 
         # create/update channels
         self.create_default_channels()
