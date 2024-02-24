@@ -34,7 +34,7 @@ class ComponentProperty:
         if not self.component_class:
             component_class = get_component_class(self.name)
             self.component_class = component_class
-            self.slot_name = component_class.slot or component_class.name
+            self.slot_name = component_class.get_component_slot()
 
         component = instance.components.get(self.slot_name)
         return component
@@ -107,7 +107,7 @@ class ComponentHandler:
 
         """
         name = component.name
-        slot_name = component.slot or name
+        slot_name = component.get_component_slot()
         if not self.has(slot_name):
             message = (
                 f"Cannot remove {name} from {self.host.name} as it is not registered."
@@ -118,8 +118,6 @@ class ComponentHandler:
             field.at_removed(component)
 
         component.at_removed(self.host)
-        if component.cmd_set:
-            self.host.cmdset.remove(component.cmd_set)
 
         self.host.tags.remove(component.name, category="components")
         self.host.signals.remove_object_listeners_and_responders(component)
@@ -183,7 +181,7 @@ class ComponentHandler:
         """
         Sets the loaded component in this instance.
         """
-        slot_name = component.slot or component.name
+        slot_name = component.get_component_slot()
         self._loaded_components[slot_name] = component
         self.host.signals.add_object_listeners_and_responders(component)
 
@@ -288,7 +286,6 @@ class ComponentHolderMixin:
                 cmp_slot = cmp_class.get_component_slot()
                 class_components[cmp_slot] = (cmp_name, cmp_values)
 
-        # TODO Is this necessary?
         instance_components = getattr(self, "_class_components", ())
         for cmp_name, cmp_values in instance_components:
             cmp_class = get_component_class(cmp_name)
