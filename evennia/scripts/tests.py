@@ -244,7 +244,7 @@ class TestMonitorHandler(TestCase):
         """Add an object to the monitor handler and then remove it"""
         self.handler.add(obj, fieldname, callback, idstring=idstring)
         self.handler.remove(obj, fieldname, idstring=idstring)
-        self.assertEquals(self.handler.monitors[obj][fieldname], {})
+        self.assertEqual(self.handler.monitors[obj][fieldname], {})
 
     def test_add_with_invalid_function(self):
         obj = mock.Mock()
@@ -266,7 +266,7 @@ class TestMonitorHandler(TestCase):
         self.handler.add(obj[1], fieldname[1], callback, idstring=idstring[1], persistent=True)
 
         output = self.handler.all()
-        self.assertEquals(
+        self.assertEqual(
             output,
             [
                 (obj[0], fieldname[0], idstring[0], False, {}),
@@ -286,7 +286,7 @@ class TestMonitorHandler(TestCase):
 
         self.handler.clear()
         self.assertNotIn(obj, self.handler.monitors)
-        self.assertEquals(defaultdict(lambda: defaultdict(dict)), self.handler.monitors)
+        self.assertEqual(defaultdict(lambda: defaultdict(dict)), self.handler.monitors)
 
     def test_add_remove_attribute(self):
         """Tests that adding and removing an object attribute to the monitor handler works correctly"""
@@ -309,7 +309,7 @@ class TestMonitorHandler(TestCase):
 
         """Remove attribute from the handler and assert that it is gone"""
         self.handler.remove(obj, fieldname, idstring=idstring, category=category)
-        self.assertEquals(self.handler.monitors[index][name], {})
+        self.assertEqual(self.handler.monitors[index][name], {})
 
 
 class TestOnDemandTask(EvenniaTest):
@@ -627,3 +627,95 @@ class TestOnDemandHandler(EvenniaTest):
         self.assertEqual(self.handler.get_dt("daffodil", "flower"), 10000)
         self.assertEqual(self.handler.get_stage("rose", "flower"), "dead")
         self.assertEqual(self.handler.get_stage("daffodil", "flower"), "dead")
+
+    @mock.patch("evennia.scripts.ondemandhandler.OnDemandTask.runtime")
+    def test_set_dt(self, mock_runtime):
+        START_TIME = 0
+
+        mock_runtime.return_value = START_TIME
+        self.handler.batch_add(self.task1, self.task2)
+
+        for task in self.handler.tasks.values():
+            task.start_time = START_TIME
+
+        self.assertEqual(self.handler.get_stage("rose", "flower"), "seedling")
+        self.assertEqual(self.handler.get_stage("daffodil", "flower"), "seedling")
+
+        self.handler.set_dt("rose", "flower", 100)
+        self.handler.set_dt("daffodil", "flower", 150)
+        self.assertEqual(
+            [task.start_time for task in self.handler.tasks.values()],
+            [START_TIME - 100, START_TIME - 150],
+        )
+        self.assertEqual(self.handler.get_dt("rose", "flower"), 100)
+        self.assertEqual(self.handler.get_dt("daffodil", "flower"), 150)
+        self.assertEqual(self.handler.get_stage("rose", "flower"), "bud")
+        self.assertEqual(self.handler.get_stage("daffodil", "flower"), "wilted")
+
+    @mock.patch("evennia.scripts.ondemandhandler.OnDemandTask.runtime")
+    def test_set_stage(self, mock_runtime):
+        START_TIME = 0
+
+        mock_runtime.return_value = START_TIME
+        self.handler.batch_add(self.task1, self.task2)
+
+        for task in self.handler.tasks.values():
+            task.start_time = START_TIME
+
+        self.assertEqual(self.handler.get_stage("rose", "flower"), "seedling")
+        self.assertEqual(self.handler.get_stage("daffodil", "flower"), "seedling")
+
+        self.handler.set_stage("rose", "flower", "bud")
+        self.handler.set_stage("daffodil", "flower", "wilted")
+        self.assertEqual(
+            [task.start_time for task in self.handler.tasks.values()],
+            [START_TIME - 100, START_TIME - 150],
+        )
+        self.assertEqual(self.handler.get_dt("rose", "flower"), 100)
+        self.assertEqual(self.handler.get_dt("daffodil", "flower"), 150)
+        self.assertEqual(self.handler.get_stage("rose", "flower"), "bud")
+        self.assertEqual(self.handler.get_stage("daffodil", "flower"), "wilted")
+
+    @staticmethod
+    def _do_decay(task, **kwargs):
+        task.stored_kwargs = kwargs
+
+    def test_handler_save(self):
+        """
+        Testing the save method of the OnDemandHandler class for reported pickling issue
+
+        """
+
+        self.handler.add(
+            key="foo",
+            category="decay",
+            stages={
+                0: "new",
+                10: ("old", self._do_decay),
+            },
+        )
+        self.handler.save()
+        self.handler.clear()
+        self.handler.save()
+
+    @mock.patch("evennia.scripts.ondemandhandler.OnDemandTask.runtime")
+    def test_call_staging_function_with_kwargs(self, mock_runtime):
+        """ """
+
+        mock_runtime.return_value = 0
+
+        self.handler.add(
+            key="foo",
+            category="decay",
+            stages={
+                0: "new",
+                10: ("old", self._do_decay),
+            },
+        )
+        self.handler.set_dt("foo", "decay", 10)
+
+        self.handler.get_stage("foo", "decay", foo="bar", bar="foo")
+
+        self.assertEqual(
+            self.handler.get("foo", "decay").stored_kwargs, {"foo": "bar", "bar": "foo"}
+        )

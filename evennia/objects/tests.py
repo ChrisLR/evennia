@@ -9,7 +9,7 @@ from evennia.typeclasses.tags import (
     TagCategoryProperty,
     TagProperty,
 )
-from evennia.utils import create
+from evennia.utils import create, search
 from evennia.utils.test_resources import BaseEvenniaTest, EvenniaTestCase
 
 
@@ -114,26 +114,72 @@ class DefaultObjectTest(BaseEvenniaTest):
         # partial match to 'colon' - multimatch error since stack is not homogenous
         self.assertEqual(self.char1.search("co", stacked=2), None)
 
+    def test_search_plural_form(self):
+        """Test searching for plural form of objects"""
+        coin1 = DefaultObject.create("coin", location=self.room1)[0]
+        coin2 = DefaultObject.create("coin", location=self.room1)[0]
+        coin3 = DefaultObject.create("coin", location=self.room1)[0]
+        # build the numbered aliases
+        coin1.get_numbered_name(2, self.char1)
+        coin2.get_numbered_name(3, self.char1)
+        coin3.get_numbered_name(4, self.char1)
+
+        self.assertEqual(self.char1.search("coin", quiet=True), [coin1, coin2, coin3])
+        self.assertEqual(self.char1.search("coins", quiet=True), [coin1, coin2, coin3])
+
     def test_get_default_lockstring_base(self):
-        pattern = f"control:pid({self.account.id}) or id({self.char1.id}) or perm(Admin);delete:pid({self.account.id}) or id({self.char1.id}) or perm(Admin);edit:pid({self.account.id}) or id({self.char1.id}) or perm(Admin)"
+        pattern = (
+            f"control:pid({self.account.id}) or id({self.char1.id}) or"
+            f" perm(Admin);delete:pid({self.account.id}) or id({self.char1.id}) or"
+            f" perm(Admin);edit:pid({self.account.id}) or id({self.char1.id}) or perm(Admin)"
+        )
         self.assertEqual(
             DefaultObject.get_default_lockstring(account=self.account, caller=self.char1), pattern
         )
 
+    def test_search_by_tag_kwarg(self):
+        "Test the by_tag method"
+
+        self.obj1.tags.add("plugh", category="adventure")
+
+        self.assertEqual(self.char1.search("Obj", quiet=True), [self.obj1])
+        # should not find a match
+        self.assertEqual(self.char1.search("Dummy", quiet=True), [])
+        # should still not find a match
+        self.assertEqual(self.char1.search("Dummy", tags=[("plugh", "adventure")], quiet=True), [])
+
+        self.assertEqual(list(search.search_object("Dummy", tags=[("plugh", "adventure")])), [])
+        self.assertEqual(
+            list(search.search_object("Obj", tags=[("plugh", "adventure")])), [self.obj1]
+        )
+        self.assertEqual(list(search.search_object("Obj", tags=[("dummy", "adventure")])), [])
+
     def test_get_default_lockstring_room(self):
-        pattern = f"control:pid({self.account.id}) or id({self.char1.id}) or perm(Admin);delete:pid({self.account.id}) or id({self.char1.id}) or perm(Admin);edit:pid({self.account.id}) or id({self.char1.id}) or perm(Admin)"
+        pattern = (
+            f"control:pid({self.account.id}) or id({self.char1.id}) or"
+            f" perm(Admin);delete:pid({self.account.id}) or id({self.char1.id}) or"
+            f" perm(Admin);edit:pid({self.account.id}) or id({self.char1.id}) or perm(Admin)"
+        )
         self.assertEqual(
             DefaultRoom.get_default_lockstring(account=self.account, caller=self.char1), pattern
         )
 
     def test_get_default_lockstring_exit(self):
-        pattern = f"control:pid({self.account.id}) or id({self.char1.id}) or perm(Admin);delete:pid({self.account.id}) or id({self.char1.id}) or perm(Admin);edit:pid({self.account.id}) or id({self.char1.id}) or perm(Admin)"
+        pattern = (
+            f"control:pid({self.account.id}) or id({self.char1.id}) or"
+            f" perm(Admin);delete:pid({self.account.id}) or id({self.char1.id}) or"
+            f" perm(Admin);edit:pid({self.account.id}) or id({self.char1.id}) or perm(Admin)"
+        )
         self.assertEqual(
             DefaultExit.get_default_lockstring(account=self.account, caller=self.char1), pattern
         )
 
     def test_get_default_lockstring_character(self):
-        pattern = f"puppet:pid({self.account.id}) or perm(Developer) or pperm(Developer);delete:pid({self.account.id}) or perm(Admin);edit:pid({self.account.id}) or perm(Admin)"
+        pattern = (
+            f"puppet:pid({self.account.id}) or perm(Developer) or"
+            f" pperm(Developer);delete:pid({self.account.id}) or"
+            f" perm(Admin);edit:pid({self.account.id}) or perm(Admin)"
+        )
         self.assertEqual(
             DefaultCharacter.get_default_lockstring(account=self.account, caller=self.char1),
             pattern,

@@ -4,13 +4,13 @@ Building and world design commands
 import re
 import typing
 
+import evennia
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db.models import Max, Min, Q
-
-import evennia
 from evennia import InterruptCommand
-from evennia.commands.cmdhandler import get_and_merge_cmdsets, generate_cmdset_providers
+from evennia.commands.cmdhandler import (generate_cmdset_providers,
+                                         get_and_merge_cmdsets)
 from evennia.locks.lockhandler import LockException
 from evennia.objects.models import ObjectDB
 from evennia.prototypes import menus as olc_menus
@@ -23,25 +23,18 @@ from evennia.utils.dbserialize import deserialize
 from evennia.utils.eveditor import EvEditor
 from evennia.utils.evmore import EvMore
 from evennia.utils.evtable import EvTable
-from evennia.utils.utils import (
-    class_from_module,
-    crop,
-    dbref,
-    display_len,
-    format_grid,
-    get_all_typeclasses,
-    inherits_from,
-    interactive,
-    list_to_string,
-    variable_from_module,
-)
+from evennia.utils.utils import (class_from_module, crop, dbref, display_len,
+                                 format_grid, get_all_typeclasses,
+                                 inherits_from, interactive, list_to_string,
+                                 variable_from_module)
 
 COMMAND_DEFAULT_CLASS = class_from_module(settings.COMMAND_DEFAULT_CLASS)
 
 _FUNCPARSER = None
 _ATTRFUNCPARSER = None
 
-_KEY_REGEX = re.compile(r"(?P<attr>.*?)(?P<key>(\[.*\]\ *)+)?$")
+# _KEY_REGEX = re.compile(r"(?P<attr>.*?)(?P<key>(\[.*\]\ *)+)?$")
+_KEY_REGEX = re.compile(r"(?P<attr>[^\[]*)(?P<key>(\[[^\]]*\]\ *)+)?$")
 
 # limit symbol import for API
 __all__ = (
@@ -3328,14 +3321,23 @@ class CmdFind(COMMAND_DEFAULT_CLASS):
                 string = f"|w{header}|n(#{low}-#{high}{restrictions}):"
                 res = None
                 for res in results:
-                    string += f"\n   |g{res.get_display_name(caller)} - {res.path}|n"
+                    string += (
+                        "\n  "
+                        f" |g{res.get_display_name(caller)}"
+                        f"{res.get_extra_display_name_info(caller)} -"
+                        f" {res.path}|n"
+                    )
                 if (
                     "loc" in self.switches
                     and nresults == 1
                     and res
                     and getattr(res, "location", None)
                 ):
-                    string += f" (|wlocation|n: |g{res.location.get_display_name(caller)}|n)"
+                    string += (
+                        " (|wlocation|n:"
+                        f" |g{res.location.get_display_name(caller)}"
+                        f"{res.get_extra_display_name_info(caller)}|n)"
+                    )
             else:
                 string = f"|wNo Matches|n(#{low}-#{high}{restrictions}):"
                 string += f"\n   |RNo matches found for '{searchstring}'|n"

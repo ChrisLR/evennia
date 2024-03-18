@@ -1,29 +1,95 @@
 # Changelog
 
-## main branch
+## Main branch
 
-- [Feature] Add `evennia.ON_DEMAND_HANDLER` for making it easier to implement
-  timed element with the on-demand approach (Griatch)
-- [Fix] Remove `AMP_ENABLED` setting since it services no real purpose and
-  erroring out on setting it would make it even less useful (Griatch).
-- [Fix] `services` command with no args would traceback (regression) (Griatch)
+- Doc fixes (Griatch)
+
+## Evennia 4.0.0
+
+March 17, 2024
+
+- Feature: Support Python 3.12 (Griatch). Currently supporting 3.10,3.11 and
+  3.12. Note that 3.10 support will be removed in a future release.
+- Feature: Update `evennia[extra]` scipy dependency to 1.12 to support latest
+  Python. Note that this may change which (equivalent) path is being picked when
+  following an xyzgrid contrib pathfinding.
+- Feature: *Backwards incompatible*: `DefaultObject.get_numbered_name` now gets object's
+  name via `.get_display_name` for better compatibility with recog systems.
+- Feature: *Backwards incompatible*: Removed the (#dbref) display from
+  `DefaultObject.get_display_name`, instead using new `.get_extra_display_name_info`
+  method for getting this info. The Object's display template was extended for
+  optionally adding this information. This makes showing extra object info to
+  admins an explicit action and opens up `get_display_name` for general use.
+- Feature: Add `ON_DEMAND_HANDLER.set_dt(key, category, dt)` and
+  `.set_stage(key, category, stage)` to allow manual tweaking of task timings,
+  for example for a spell speeding a plant's growth (Griatch)
+- Feature: Add `ON_DEMAND_HANDLER.get_dt/stages(key,category, **kwargs)`, where
+  the kwargs are passed into any stage-callable defined with the stages. (Griatch)
+- Feature: Add `use_assertequal` kwarg to the `EvenniaCommandTestMixin` testing
+  class; this uses django's `assertEqual` over the default more lenient checker,
+  which can be useful for testing table whitespace (Griatch)
+- Feature: New `utils.group_objects_by_key_and_desc` for grouping a list of
+  objects based on the visible key and desc. Useful for inventory listings (Griatch)
+- Feature: Add `DefaultObject.get_numbered_name` `return_string` bool kwarg, for only
+  returning singular/plural based on count instead of a tuple with both (Griatch)
+- [Fix][issue3443] Removed the `@reboot` alias to `@reset` to not mislead people
+  into thinking you can do a portal+server reboot from in-game (you cannot) (Griatch)
+- Fix: `DefaultObject.get_numbered_name` used `.name` instead of
+  `.get_display_name` which broke recog systems. May lead to object's #dbref
+  will show for admins in some more places (Griatch)
+- [Fix][pull3420]: Refactor Clothing contrib's inventory command align with
+  Evennia core's version (michaelfaith84, Griatch)
+- [Fix][issue3438]: Limiting search by tag didn't take search-string into
+  account (Griatch)
+- [Fix][issue4311]: SSH connection caused a traceback in protocol (Griatch)
+- Fix: Resolve a bug when loading on-demand-handler data from database (Griatch)
+- Security: Potential O(n2) regex exploit in rpsystem regex (Griatch)
+- Security: Fix potential redirect vulnerability in character page redirect (Griatch)
+- Doc fixes (iLPdev, Griatch, CloudKeeper)
+
+[pull3420]: https://github.com/evennia/evennia/pull/3420
+[issue3438]: https://github.com/evennia/evennia/issues/3438
+[issue3411]: https://github.com/evennia/evennia/issues/3411
+[issue3443]: https://github.com/evennia/evennia/issues/3443
+
+## Evennia 3.2.0
+
+Feb 25, 2024
+
+- Feature: Add [`evennia.ON_DEMAND_HANDLER`][new-ondemandhandler] for making it
+  easier to implement changes that are calculated on-demand (Griatch)
 - [Feature][pull3412]: Make it possible to add custom webclient css in
   `webclient/css/custom.css`, same as for website (InspectorCaracal)
+- [Feature][pull3367]: [Component contrib][pull3367extra] got better
+  inheritance, slot names to choose attr storage, speedups and fixes (ChrisLR)
+- Feature: Break up `DefaultObject.search` method into several helpers to make
+  it easier to override (Griatch)
+- Fix: Resolve multimatch error with rpsystem contrib (Griatch)
+- Fix: Remove `AMP_ENABLED` setting since it services no real purpose and
+  erroring out on setting it would make it even less useful (Griatch).
+- Feature: Remove too-strict password restrictions for Evennia logins, using
+  django defaults instead for passwords with more varied characters.
+- Fix `services` command with no args would traceback (regression) (Griatch)
 - [Fix][pull3423]: Fix wilderness contrib error moving to an already existing
   wilderness room (InspectorCaracal)
 - [Fix][pull3425]: Don't always include example the crafting recipe when
   using the crafting contrib (InspectorCaracal)
-- [pull3426]: Traceback banning a channel using with only one nick
+- [Fix][pull3426]: Traceback banning a channel using with only one nick
   (InspectorCaracal)
-- [pull3434]: Adjust lunr search weights to void clashing of cmd-aliases over
+- [Fix][pull3434]: Adjust lunr search weights to void clashing of cmd-aliases over
   keys which caused some help entries to shadow others (InspectorCaracal)
+- Fix: Make `menu/email_login` contribs honor `NEW_ACCOUNT_REGISTRATION_ENABLED`
+  setting (Griatch)
 - Doc fixes (InspectorCaracal, Griatch)
 
+[new-ondemandhandler]: https://www.evennia.com/docs/latest/Components/OnDemandHandler.html
 [pull3412]: https://github.com/evennia/evennia/pull/3412
 [pull3423]: https://github.com/evennia/evennia/pull/3423
 [pull3425]: https://github.com/evennia/evennia/pull/3425
 [pull3426]: https://github.com/evennia/evennia/pull/3426
 [pull3434]: https://github.com/evennia/evennia/pull/3434
+[pull3367]: https://github.com/evennia/evennia/pull/3367
+[pull3367extra]: https://www.evennia.com/docs/latest/Contribs/Contrib-Components.html
 
 ## Evennia 3.1.1
 

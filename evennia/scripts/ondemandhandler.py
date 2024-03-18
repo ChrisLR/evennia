@@ -3,10 +3,10 @@ Helper to handle on-demand requests, allowing a system to change state only when
 actually needs the information. This is a very efficient way to handle gradual changes, requiring
 not computer resources until the state is actually needed.
 
-For example, consider a flowering system, where a seed sprouts, grows and blooms over a certain time.
-One _could_ implement this with e.g. a Script or a ticker that gradually moves the flower along
-its stages of growth. But what if that flower is in a remote location, and no one is around to see it?
-You are then wasting computational resources on something that no one is looking at.
+For example, consider a flowering system, where a seed sprouts, grows and blooms over a certain
+time.  One _could_ implement this with e.g. a Script or a ticker that gradually moves the flower
+along its stages of growth. But what if that flower is in a remote location, and no one is around to
+see it?  You are then wasting computational resources on something that no one is looking at.
 
 The truth is that most of the time, players are not looking at most of the things in the game. They
 _only_ need to know about which state the flower is in when they are actually looking at it, or
@@ -28,8 +28,8 @@ This is the basic principle, using the flowering system as an example.
    since too long time has passed and the plant has died.
 
 With a system like this you could have growing plants all over your world and computing usage would
-only scale by how many players you have exploring your world. The players will not know the difference
-between this and a system that is always running, but your server will thank you.
+only scale by how many players you have exploring your world. The players will not know the
+difference between this and a system that is always running, but your server will thank you.
 
 There is only one situation where this system is not ideal, and that is when a player should be
 informed of the state change _even if they perform no action_. That is, even if they are just idling
@@ -69,6 +69,7 @@ from evennia.utils.utils import is_iter
 _RUNTIME = None
 
 ON_DEMAND_HANDLER = None
+ONDEMAND_HANDLER_SAVE_NAME = "on_demand_timers"
 
 
 class OnDemandTask:
@@ -76,10 +77,10 @@ class OnDemandTask:
     Stores information about an on-demand task.
 
     Default property:
-    - `default_stage_function (callable)`: This is called if no stage function is given in the stages dict.
-        This is meant for changing the task itself (such as restarting it). Actual game code should
-        be handled elsewhere, by checking this task. See the `stagefunc_*` static methods for examples
-        of how to manipulate the task when a stage is reached.
+    - `default_stage_function (callable)`: This is called if no stage function is given in the
+       stages dict.  This is meant for changing the task itself (such as restarting it). Actual
+       game code should be handled elsewhere, by checking this task. See the `stagefunc_*` static
+       methods for examples of how to manipulate the task when a stage is reached.
 
     """
 
@@ -100,7 +101,7 @@ class OnDemandTask:
         return _RUNTIME()
 
     @staticmethod
-    def stagefunc_loop(task):
+    def stagefunc_loop(task, **kwargs):
         """
         Attach this to the last stage to have the task start over from
         the beginning
@@ -131,7 +132,7 @@ class OnDemandTask:
         task.start_time = now - current_loop_time
 
     @staticmethod
-    def stagefunc_bounce(task):
+    def stagefunc_bounce(task, **kwargs):
         """
         This endfunc will have the task reverse direction and go through the stages in
         reverse order. This stage-function must be placed at both 'ends' of the stage sequence
@@ -161,7 +162,8 @@ class OnDemandTask:
             stages = task.stages
             task.stages = {abs(k - max_dt): v for k, v in sorted(stages.items())}
 
-    # default fallback stage function. This is called if no stage function is given in the stages dict.
+    # default fallback stage function. This is called if no stage function is given in the stages
+    # dict.
     default_stage_function = None
 
     def __init__(self, key, category, stages=None, autostart=True):
@@ -199,11 +201,17 @@ class OnDemandTask:
         self.iterations = 0  # only used with looping staging functions
 
         self.stages = None
+        self.stages_by_name = None
 
         if isinstance(stages, dict):
             # sort the stages by ending time, inserting each state as {dt: (statename, callable)}
             _stages = {}
             for dt, tup in stages.items():
+                # validate the input
+                if not isinstance(dt, (int, float)):
+                    raise ValueError(
+                        "Each stage must given as a time-delta in seconds (int or float)."
+                    )
                 if is_iter(tup):
                     if len(tup) != 2:
                         raise ValueError(
@@ -218,6 +226,7 @@ class OnDemandTask:
                 _stages[dt] = tup
 
             self.stages = {dt: tup for dt, tup in sorted(_stages.items(), reverse=True)}
+            self.stages_by_name = {tup[0]: dt for dt, tup in self.stages.items()}
 
         self.check(autostart=autostart)
 
@@ -232,13 +241,14 @@ class OnDemandTask:
             return False
         return (self.key, self.category) == (other.key, other.category)
 
-    def check(self, autostart=True):
+    def check(self, autostart=True, **kwargs):
         """
         Check the current stage of the task and return the time-delta to the next stage.
 
-        Args:
+        Keyword Args:
             autostart (bool, optional): If this is set, and the task has not been started yet,
                 it will be started by this check. This is mainly used internally.
+            **kwargs: Will be passed to the stage function, if one is called.
 
         Returns:
             tuple: A tuple (dt, stage) where `dt` is the time-delta (in seconds) since the test
@@ -261,7 +271,7 @@ class OnDemandTask:
 
                     if stage_func:
                         try:
-                            stage_func(self)
+                            stage_func(self, **kwargs)
                         except Exception as err:
                             logger.log_trace(
                                 f"Error getting stage of on-demand task {self} "
@@ -295,27 +305,70 @@ class OnDemandTask:
 
         return dt, stage
 
-    def get_dt(self):
+    def get_dt(self, **kwargs):
         """
         Get the time-delta since last check.
 
         Returns:
             int: The time since the last check, or 0 if this is the first time the task is checked.
+            **kwargs: Will be passed to the stage function, if one is called.
 
         """
 
-        return self.check()[0]
+        return self.check(autostart=True, **kwargs)[0]
 
-    def get_stage(self):
+    def set_dt(self, dt):
+        """
+        Set the time-delta since the task started manually. This allows you to 'cheat' the system
+        and set the time manually. This is useful for testing or when a system manipulates the state
+        somehow (like using a potion that speeds up the growth of a plant).
+
+        Args:
+            dt (int): The time-delta to set. This is an absolute value in seconds, same as returned
+                by `get_dt`.
+
+        Notes:
+            Setting this will not on its own trigger any stage functions - this will only happen
+            as normal, next time the state is checked and the stage is found to have changed.
+
+        """
+        self.start_time = OnDemandTask.runtime() - dt
+
+    def get_stage(self, **kwargs):
         """
         Get the current stage of the task. If no stage was given, this will return `None` but
         still update the last_checked time.
 
         Returns:
             str or None: The current stage of the task, or `None` if no stages are set.
+            **kwargs: Will be passed to the stage function, if one is called.
 
         """
-        return self.check()[1]
+        return self.check(autostart=True, **kwargs)[1]
+
+    def set_stage(self, stage=None):
+        """
+        Set the stage of the task manually. This allows you to 'cheat' the system and set the stage
+        manually. This is useful for testing or when a system manipulates the state somehow (like
+        using a potion that speeds up the growth of a plant). The given stage must be previously
+        created for the given task. If task has no stages, this will do nothing.
+
+        Args:
+            stage (str, optional): The stage to set. If `None`, the task will be reset to its
+                initial (first) state.
+
+        Notes:
+            Setting this will not on its own trigger any stage functions - this will only happen
+            as normal, next time the state is checked and the stage is found to have changed.
+
+        """
+        if not self.stages:
+            return
+
+        if stage is None:
+            self.start_time = OnDemandTask.runtime() - min(self.stages.keys())
+        elif stage in self.stages_by_name:
+            self.start_time = OnDemandTask.runtime() - self.stages_by_name[stage]
 
 
 class OnDemandHandler:
@@ -338,14 +391,14 @@ class OnDemandHandler:
         This should be automatically called when Evennia starts.
 
         """
-        self.tasks = ServerConfig.objects.conf("on_demand_timers", default=dict)
+        self.tasks = dict(ServerConfig.objects.conf(ONDEMAND_HANDLER_SAVE_NAME, default=dict))
 
     def save(self):
         """
         Save the on-demand timers to ServerConfig storage. Should be called when Evennia shuts down.
 
         """
-        ServerConfig.objects.conf("on_demand_timers", self.tasks)
+        ServerConfig.objects.conf(ONDEMAND_HANDLER_SAVE_NAME, self.tasks)
 
     def _build_key(self, key, category):
         """
@@ -356,7 +409,8 @@ class OnDemandHandler:
                 called without arguments. If an Object, will be converted to a string. If
                 an `OnDemandTask`, then all other arguments are ignored and the task will be used
                 to build the internal storage key.
-            category (str or callable): The task category. If callable, it will be called without arguments.
+            category (str or callable): The task category. If callable, it will be called without
+                arguments.
 
         Returns:
             tuple (str, str or None): The unique key.
@@ -389,7 +443,8 @@ class OnDemandHandler:
 
         Returns:
             OnDemandTask: The created task (or the same that was added, if given an `OnDemandTask`
-                as a `key`).  Use `task.get_dt()` and `task.get_stage()` to get data from it manually.
+                as a `key`).  Use `task.get_dt()` and `task.get_stage()` to get data from it
+                manually.
 
         """
         if isinstance(key, OnDemandTask):
@@ -415,9 +470,10 @@ class OnDemandHandler:
         Remove an on-demand task.
 
         Args:
-            key (str, callable, OnDemandTask or Object): The unique identifier for the task. If a callable, will
-                be called without arguments. If an Object, will be converted to a string. If an `OnDemandTask`,
-                then all other arguments are ignored and the task will be used to identify the task to remove.
+            key (str, callable, OnDemandTask or Object): The unique identifier for the task. If a
+                callable, will be called without arguments. If an Object, will be converted to a
+                string.  If an `OnDemandTask`, then all other arguments are ignored and the task
+                will be used to identify the task to remove.
             category (str or callable, optional): The category of the task.
 
         Returns:
@@ -469,10 +525,10 @@ class OnDemandHandler:
         Clear all on-demand tasks.
 
         Args:
-            category (str, optional): The category of the tasks to clear. What `None` means is determined
-                by the `all_on_none` kwarg.
-            all_on_none (bool, optional): Determines what to clear if `category` is `None`. If `True`,
-                clear all tasks, if `False`, only clear tasks with no category.
+            category (str, optional): The category of the tasks to clear. What `None` means is
+                determined by the `all_on_none` kwarg.
+            all_on_none (bool, optional): Determines what to clear if `category` is `None`. If
+                `True`, clear all tasks, if `False`, only clear tasks with no category.
 
         """
         if category is None and all_on_none:
@@ -490,9 +546,9 @@ class OnDemandHandler:
 
         Args:
             key (str, callable, OnDemandTask or Object): The unique identifier for the task. If a
-                callable, will be called without arguments. If an Object, will be converted to a string.
-                If an `OnDemandTask`, then all other arguments are ignored and the task will be used
-                (only useful to check the task is the same).
+                callable, will be called without arguments. If an Object, will be converted to a
+                string.  If an `OnDemandTask`, then all other arguments are ignored and the task
+                will be used (only useful to check the task is the same).
 
             category (str, optional): The category of the task. If unset, this will only return
                 tasks with no category.
@@ -503,39 +559,91 @@ class OnDemandHandler:
         """
         return self.tasks.get(self._build_key(key, category))
 
-    def get_dt(self, key, category=None):
+    def get_dt(self, key, category=None, **kwargs):
         """
         Get the time-delta since the task started.
 
         Args:
             key (str, callable, OnDemandTask or Object): The unique identifier for the task. If a
-                callable, will be called without arguments. If an Object, will be converted to a string.
-                If an `OnDemandTask`, then all other arguments are ignored and the task will be used
-                to identify the task to get the time-delta from.
+                callable, will be called without arguments. If an Object, will be converted to a
+                string.  If an `OnDemandTask`, then all other arguments are ignored and the task
+                will be used to identify the task to get the time-delta from.
+            **kwargs: Will be passed to the stage function, if one is called.
 
         Returns:
             int or None: The time since the last check, or `None` if no task was found.
 
         """
         task = self.get(key, category)
-        return task.get_dt() if task else None
+        return task.get_dt(**kwargs) if task else None
 
-    def get_stage(self, key, category=None):
+    def set_dt(self, key, category, dt):
+        """
+        Set the time-delta since the task started manually. This allows you to 'cheat' the system
+        and set the time manually. This is useful for testing or when a system manipulates the state
+        somehow (like using a potion that speeds up the growth of a plant).
+
+        Args:
+            key (str, callable, OnDemandTask or Object): The unique identifier for the task. If a
+                callable, will be called without arguments. If an Object, will be converted to a
+                string. If an `OnDemandTask`, then all other arguments are ignored and the task will
+                be used to identify the task to set the time-delta for.
+            category (str, optional): The category of the task.
+            dt (int): The time-delta to set. This is an absolute value in seconds, same as returned
+                by `get_dt`.
+
+        Notes:
+            Setting this will not on its own trigger any stage functions - this will only happen
+            as normal, next time the state is checked and the stage is found to have changed.
+
+        """
+        task = self.get(key, category)
+        if task:
+            task.set_dt(dt)
+
+    def get_stage(self, key, category=None, **kwargs):
         """
         Get the current stage of an on-demand task.
 
         Args:
             key (str, callable, OnDemandTask or Object): The unique identifier for the task. If a
-                callable, will be called without arguments. If an Object, will be converted to a string.
-                If an `OnDemandTask`, then all other arguments are ignored and the task will be used
-                to identify the task to get the stage from.
+                callable, will be called without arguments. If an Object, will be converted to a
+                string.  If an `OnDemandTask`, then all other arguments are ignored and the task
+                will be used to identify the task to get the stage from.
+            category (str, optional): The category of the task.
+            **kwargs: Will be passed to the stage function, if one is called.
 
         Returns:
             str or None: The current stage of the task, or `None` if no task was found.
 
         """
         task = self.get(key, category)
-        return task.get_stage() if task else None
+        return task.get_stage(**kwargs) if task else None
+
+    def set_stage(self, key, category=None, stage=None):
+        """
+        Set the stage of an on-demand task manually. This allows you to 'cheat' the system and set
+        the stage manually. This is useful for testing or when a system manipulates the state
+        somehow (like using a potion that speeds up the growth of a plant). The given stage must
+        be previously created for the given task. If task has no stages, this will do nothing.
+
+        Args:
+            key (str, callable, OnDemandTask or Object): The unique identifier for the task. If a
+                callable, will be called without arguments. If an Object, will be converted to a
+                string.  If an `OnDemandTask`, then all other arguments are ignored and the task
+                will be used to identify the task to set the stage for.
+            category (str, optional): The category of the task.
+            stage (str, optional): The stage to set. If `None`, the task will be reset to its
+                initial (first) state.
+
+        Notes:
+            Setting this will not on its own trigger any stage functions - this will only happen
+            as normal, next time the state is checked and the stage is found to have changed.
+
+        """
+        task = self.get(key, category)
+        if task:
+            task.set_stage(stage)
 
 
 # Create singleton

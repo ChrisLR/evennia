@@ -1766,6 +1766,41 @@ def string_partial_matching(alternatives, inp, ret_index=True):
     return []
 
 
+def group_objects_by_key_and_desc(objects, caller=None, **kwargs):
+    """
+    Groups a list of objects by their key and description. This is used to group
+    visibly identical objects together, for example for inventory listings.
+
+    Args:
+        objects (list): A list of objects to group. These must be DefaultObject.
+
+        caller (Object, optional): The object looking at the objects, used to get the
+            description and key of each object.
+        **kwargs: Passed into each object's `get_display_name/desc` methods.
+
+    Returns:
+        iterable: An iterable of tuples, where each tuple is on the form
+            `(numbered_name, description, [objects])`.
+
+    """
+    key_descs = defaultdict(list)
+    return_string = kwargs.pop("return_string", True)
+
+    for obj in objects:
+        key_descs[
+            (obj.get_display_name(caller, **kwargs), obj.get_display_desc(caller, **kwargs))
+        ].append(obj)
+
+    return (
+        (
+            objs[0].get_numbered_name(len(objs), caller, return_string=return_string, **kwargs),
+            desc,
+            objs,
+        )
+        for (key, desc), objs in sorted(key_descs.items(), key=lambda tup: tup[0][0])
+    )
+
+
 def format_table(table, extra_space=1):
     """
     Format a 2D array of strings into a multi-column table.
