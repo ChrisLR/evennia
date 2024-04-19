@@ -11,11 +11,12 @@ from datetime import datetime, timedelta
 
 import mock
 from django.test import TestCase
+from parameterized import parameterized
+from twisted.internet import task
+
 from evennia.utils import utils
 from evennia.utils.ansi import ANSIString
 from evennia.utils.test_resources import BaseEvenniaTest
-from parameterized import parameterized
-from twisted.internet import task
 
 
 class TestIsIter(TestCase):
@@ -51,6 +52,43 @@ class TestDedent(TestCase):
         input_string = "  hello\n  world"
         expected_string = "hello\nworld"
         self.assertEqual(expected_string, utils.dedent(input_string))
+
+
+class TestCompressWhitespace(TestCase):
+    def test_compress_whitespace(self):
+        # No text, return no text
+        self.assertEqual("", utils.compress_whitespace(""))
+        # If no whitespace is exceeded, should return the same
+        self.assertEqual(
+            "One line\nTwo  spaces", utils.compress_whitespace("One line\nTwo  spaces")
+        )
+        # Extra newlines are removed
+        self.assertEqual(
+            "First line\nSecond line", utils.compress_whitespace("First line\n\nSecond line")
+        )
+        # Extra spaces are removed
+        self.assertEqual("Too  many  spaces", utils.compress_whitespace("Too   many      spaces"))
+        # "Invisible" extra lines with whitespace are removed
+        self.assertEqual(
+            "First line\nSecond line", utils.compress_whitespace("First line\n    \n \nSecond line")
+        )
+        # Max kwargs are respected
+        self.assertEqual(
+            "First line\n\nSecond line",
+            utils.compress_whitespace(
+                "First line\n\nSecond  line", max_spacing=1, max_linebreaks=2
+            ),
+        )
+
+    def test_preserve_indents(self):
+        """Ensure that indentation spacing is preserved."""
+        indented = """\
+Hanging Indents
+    they're great
+    let's keep them\
+"""
+        # since there is no doubled-up spacing besides indents, input should equal output
+        self.assertEqual(indented, utils.compress_whitespace(indented))
 
 
 class TestListToString(TestCase):
