@@ -144,7 +144,7 @@ class SignalsHandler(object):
 
         Args:
             signal_name (str): The name of the signal to trigger
-            default (any): The value to use when no responses are given
+            default (any): The value to use when no responses are givenF
                            It will be passed to aggregate_func if it is also given.
             aggregate_func (callable): The function to process the results before returning.
 
