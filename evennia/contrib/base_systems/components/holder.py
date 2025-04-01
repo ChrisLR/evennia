@@ -74,6 +74,9 @@ class ComponentHandler:
 
         """
         component_name = component.name
+        if self.has(component_name):
+            self.remove_by_name(component_name)
+
         self.db_names.append(component_name)
         self.host.tags.add(component_name, category="components")
         self._set_component(component)
@@ -93,6 +96,9 @@ class ComponentHandler:
             name (str): The name of the component class to add.
 
         """
+        if self.has(name):
+            self.remove_by_name(name)
+
         component_class = get_component_class(name)
         component_instance = component_class.default_create(self.host)
         self.add(component_instance)
