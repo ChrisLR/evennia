@@ -5,7 +5,6 @@ General Character commands usually available to all characters
 import re
 
 from django.conf import settings
-
 from evennia.objects.objects import DefaultObject
 from evennia.typeclasses.attributes import NickTemplateInvalid
 from evennia.utils import utils
@@ -190,8 +189,7 @@ class CmdNick(COMMAND_DEFAULT_CLASS):
 
         if "clearall" in switches:
             caller.nicks.clear()
-            if caller.account:
-                caller.account.nicks.clear()
+            caller.account.nicks.clear()
             caller.msg("Cleared all nicks.")
             return
 
@@ -791,18 +789,15 @@ class CmdAccess(COMMAND_DEFAULT_CLASS):
         hierarchy_full = settings.PERMISSION_HIERARCHY
         string = "\n|wPermission Hierarchy|n (climbing):\n %s" % ", ".join(hierarchy_full)
 
-        if caller.account and caller.account.is_superuser:
+        if self.caller.account.is_superuser:
             cperms = "<Superuser>"
             pperms = "<Superuser>"
         else:
             cperms = ", ".join(caller.permissions.all())
-            if caller.account:
-                pperms = ", ".join(caller.account.permissions.all())
-            else:
-                pperms = "<No account>"
+            pperms = ", ".join(caller.account.permissions.all())
 
         string += "\n|wYour access|n:"
         string += f"\nCharacter |c{caller.key}|n: {cperms}"
-        if utils.inherits_from(caller, DefaultObject) and caller.account:
+        if utils.inherits_from(caller, DefaultObject):
             string += f"\nAccount |c{caller.account.key}|n: {pperms}"
         caller.msg(string)
