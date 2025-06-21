@@ -5,10 +5,11 @@ Building and world design commands
 import re
 import typing
 
-import evennia
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db.models import Max, Min, Q
+
+import evennia
 from evennia import InterruptCommand
 from evennia.commands.cmdhandler import generate_cmdset_providers, get_and_merge_cmdsets
 from evennia.locks.lockhandler import LockException
@@ -397,7 +398,10 @@ class CmdCopy(ObjManipCommand):
             if not from_obj:
                 return
             to_obj_name = "%s_copy" % from_obj_name
-            to_obj_aliases = ["%s_copy" % alias for alias in from_obj.aliases.all()]
+            to_obj_aliases = [
+                (f"{alias}_copy", category)
+                for alias, category in from_obj.aliases.all(return_key_and_category=True)
+            ]
             copiedobj = ObjectDB.objects.copy_object(
                 from_obj, new_key=to_obj_name, new_aliases=to_obj_aliases
             )
@@ -1484,7 +1488,7 @@ class CmdName(ObjManipCommand):
         obj = None
         if self.lhs_objs:
             objname = self.lhs_objs[0]["name"]
-            if objname.startswith("*"):
+            if objname.startswith("*") and caller.account:
                 # account mode
                 obj = caller.account.search(objname.lstrip("*"))
                 if obj:
@@ -3249,7 +3253,7 @@ class CmdFind(COMMAND_DEFAULT_CLASS):
             try:
                 # Check that rhs is either a valid dbref or dbref range
                 bounds = tuple(
-                    sorted(dbref(x, False) for x in re.split("[-\s]+", self.rhs.strip()))
+                    sorted(dbref(x, False) for x in re.split(r"[-\s]+", self.rhs.strip()))
                 )
 
                 # dbref() will return either a valid int or None

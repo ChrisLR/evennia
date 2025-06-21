@@ -142,9 +142,9 @@ def echo(session, *args, **kwargs):
     Echo test function
     """
     if _STRIP_INCOMING_MXP:
-        txt = strip_mxp(txt)
+        args = [_maybe_strip_incoming_mxp(str(arg)) for arg in args]
 
-    session.data_out(text="Echo returns: %s" % args)
+    session.data_out(text=f"Echo returns: {args}, {kwargs}")
 
 
 def default(session, cmdname, *args, **kwargs):
