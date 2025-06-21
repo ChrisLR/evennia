@@ -24,7 +24,6 @@ import importlib
 from codecs import lookup as codecs_lookup
 
 from django.conf import settings
-
 from evennia.accounts.models import AccountDB
 from evennia.commands.cmdhandler import cmdhandler
 from evennia.utils.logger import log_err
