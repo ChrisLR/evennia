@@ -2,7 +2,48 @@
 
 ## Main branch
 
-Updated dependencies: Django >5.1 (<5,2), Twisted >24 (<25).
+- [Fix][pull3799]: Fix typo in `basic_tc.py` contrib for beginner tutorial (Tharic99)
+- [Fix][pull3806]: EvMore wouldn't pass Session to next cmd when exiting (gas-public-wooden-clean)
+- [Fix][pull3809]: Admin page - Repair link to Account button (UserlandAlchemist)
+- [Fix][pull3811]: Website login banner shows before login attempt (UserlandAlchemist)
+- [Fix][pull3817]: `ingame_reports` i18n fix (peddn)
+- [Fix][pull3818]: Update spawn hook to use `new_prototype` (InspectorCaracal)
+- [Fix][pull3815]: Performance improvement in large cmdset mergers (blongden)
+- [Doc][pull3801]: Move Evennia doc build system to latest Sphinx/myST
+  (PowershellNinja, also honorary mention to electroglyph)
+- [Doc][pull3800]: Describe support for Telnet SSH in HAProxy documentation (holl0wstar)
+- [Doc][pull3825]: Update Portuguese translation (marado)
+- [Doc][pull3826]: Fix broken links in README (marado)
+- Docs: marado, Griatch
+
+[pull3799]: https://github.com/evennia/evennia/issues/3799
+[pull3800]: https://github.com/evennia/evennia/issues/3800
+[pull3801]: https://github.com/evennia/evennia/issues/3801
+[pull3806]: https://github.com/evennia/evennia/issues/3806
+[pull3809]: https://github.com/evennia/evennia/issues/3809
+[pull3811]: https://github.com/evennia/evennia/issues/3811
+[pull3815]: https://github.com/evennia/evennia/issues/3815
+[pull3817]: https://github.com/evennia/evennia/issues/3817
+[pull3818]: https://github.com/evennia/evennia/issues/3818
+[pull3825]: https://github.com/evennia/evennia/issues/3825
+[pull3826]: https://github.com/evennia/evennia/issues/3826
+
+
+## Evennia 5.0.1
+
+Jul 2, 2025
+
+- [Fix][issue3796]: Fix Django version minimum string being too picky, causing
+  confusing warning message on startup (Griatch)
+
+[issue3796]: https://github.com/evennia/evennia/issues/3796
+
+
+## Evennia 5.0.0
+
+Jul 1, 2025
+
+Updated dependencies: Django >5.2 (<5.3), Twisted >24 (<25).
 Python versions: 3.11, 3.12, 3.13.
 
 This upgrade requires running `evennia migrate` on your existing database
@@ -14,6 +55,11 @@ This upgrade requires running `evennia migrate` on your existing database
 - [Feat][pull3633]: Default object's default descs are now taken from a `default_description`
     class variable instead of the `desc` Attribute always being set (count-infinity)
 - [Feat][pull3718]: Remove twistd.bat creation for Windows, should not be needed anymore (0xDEADFED5)
+- [Feat][pull3756]: Updated German translation (JohnFi)
+- [Feat][pull3757]: Add more i18n strings to `DefaultObject` for easier translation (JohnFi)
+- [Feat][pull3783]: Support users of `ruff` linter by adding compatible config in `pyproject.toml` (jaborsh)
+- [Feat][pull3777]: New contrib `debugpy` for debugging Evennia with in VSCode with `debugpy` adapter (electroglyph)
+- [Feat][pull3795]: Support evennia launcher for use with `uv` installation (TehomCD)
 - [Fix][pull3677]: Make sure that `DefaultAccount.create` normalizes to empty
   strings instead of `None` if no name is provided, also enforce string type (InspectorCaracal)
 - [Fix][pull3682]: Allow in-game help searching for commands natively starting
@@ -40,6 +86,15 @@ This upgrade requires running `evennia migrate` on your existing database
 - [Fix][pull3744]: Fix for format strings not getting picked up in i18n (JohnFi)
 - [Fix][pull3743]: Log full stack trace on failed object creation (aMiss-aWry)
 - [Fix][pull3747]: TutorialWorld bridge-room didn't correctly randomize weather effects (SpyrosRoum)
+- [Fix][pull3765]: Storing TickerHandler `store_key` in a db attribute would not
+  work correctly (0xDEADFED5)
+- [Fix][pull3753]: Make sure `AttributeProperty`s are initialized with default values also in parent class (JohnFi)
+- [Fix][pull3751]: The `access` and `inventory` commands would traceback if run on a character without an Account (EliasWatson)
+- [Fix][pull3768]: Make sure the `CmdCopy` command copies object categories,
+  since otherwise plurals were lost (jaborsh)
+- [Fix][issue3788]: `GLOBAL_SCRIPTS.all()` raised error (Griatch)
+- [Fix][issue3790]: Fix migration issue due to new db init-check code in launcher (Griatch)
+- [Fix][issue3794]: Make sure to pass `move_type` kwarg to `at_pre_object_receive|leave` hooks (Griatch)
 - Fix: `options` setting `NOPROMPTGOAHEAD` was not possible to set (Griatch)
 - Fix: Make `\\` properly preserve one backlash in funcparser (Griatch)
 - Fix: The testing 'echo' inputfunc didn't work correctly; now returns both args/kwargs (Griatch)
@@ -69,6 +124,16 @@ This upgrade requires running `evennia migrate` on your existing database
 [pull3743]: https://github.com/evennia/evennia/pull/3743
 [pull3744]: https://github.com/evennia/evennia/pull/3744
 [pull3747]: https://github.com/evennia/evennia/pull/3747
+[pull3765]: https://github.com/evennia/evennia/pull/3765
+[pull3753]: https://github.com/evennia/evennia/pull/3753
+[pull3751]: https://github.com/evennia/evennia/pull/3751
+[pull3756]: https://github.com/evennia/evennia/pull/3756
+[pull3757]: https://github.com/evennia/evennia/pull/3757
+[pull3768]: https://github.com/evennia/evennia/pull/3768
+[pull3783]: https://github.com/evennia/evennia/pull/3783
+[pull3777]: https://github.com/evennia/evennia/pull/3777
+[pull3794]: https://github.com/evennia/evennia/pull/3794
+[pull3795]: https://github.com/evennia/evennia/pull/3795
 [issue3688]: https://github.com/evennia/evennia/issues/3688
 [issue3687]: https://github.com/evennia/evennia/issues/3687
 
