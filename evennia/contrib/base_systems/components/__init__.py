@@ -10,6 +10,6 @@ See the docs for more information.
 
 from . import exceptions  # noqa
 from .component import Component  # noqa
-from .dbfield import DBField, NDBField, TagField  # noqa
+from .dbfield import DBField, NDBField, TagField, HostField, KeyField  # noqa
 from .holder import ComponentHolderMixin, ComponentProperty  # noqa
 from .listing import COMPONENT_LISTING, get_component_class  # noqa

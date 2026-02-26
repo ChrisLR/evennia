@@ -11,6 +11,7 @@ which is a non-db version of Attributes.
 
 import fnmatch
 import re
+import typing
 from collections import defaultdict
 from copy import copy
 
@@ -344,6 +345,40 @@ class NAttributeProperty(AttributeProperty):
     """
 
     attrhandler_name = "nattributes"
+
+
+class KeyProperty(AttributeProperty):
+    def __init__(self, listing: typing.Mapping, default=None, **kwargs):
+        if default is not None and not isinstance(default, str) and not isinstance(default, int):
+            key = getattr(default, "key", None)
+            if not key:
+                raise ValueError("Only str, int, or instances with keys are supported")
+
+            default = key
+
+        super().__init__(default=default, **kwargs)
+        self.listing = listing
+
+    def __set_name__(self, owner, name):
+        key = f"{name}_key"
+        super().__set_name__(owner, key)
+
+    def __get__(self, instance, owner):
+        key = super().__get__(instance, owner)
+        if key is None:
+            # Key properties always fetch once before even being requested
+            return None
+        return self.listing.get(key)
+
+    def __set__(self, instance, value):
+        if not isinstance(value, str) and not isinstance(value, int):
+            key = getattr(value, "key", None)
+            if not key:
+                raise ValueError("Only str, int, or instances with keys are supported")
+
+            value = key
+
+        return super().__set__(instance, value)
 
 
 class Attribute(IAttribute, SharedMemoryModel):

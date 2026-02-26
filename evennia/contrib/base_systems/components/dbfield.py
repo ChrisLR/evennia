@@ -168,3 +168,86 @@ class TagField:
             component (Component): The component instance being removed.
         """
         self.__delete__(component)
+
+
+class HostField(DBField):
+    def __init__(self, default=None, autocreate=False, overridable=False, host_attribute=None, **kwargs):
+        super().__init__(autocreate=autocreate, **kwargs)
+        self.overridable = overridable
+        self._fallback_default = default
+        self.host_attribute = host_attribute
+
+    def __set_name__(self, owner: 'Component', name):
+        """
+        Called when descriptor is first assigned to the class.
+
+        Args:
+            owner (object): The component class on which this is set
+            name (str): The name that was used to set the DBField.
+        """
+        slot_name = owner.slot or owner.name
+        self._key = f"{slot_name}::{name}"
+        owner.add_field(name, self)
+        if self.host_attribute is None:
+            self.host_attribute = f"{slot_name}_{name}"
+
+    def __get__(self, instance, owner):
+        """
+        Called when the attrkey is retrieved from the instance.
+
+        """
+        if self.overridable:
+            override = super().__get__(instance, owner)
+            if override is not None:
+                return override
+
+        value = getattr(instance.host, self.host_attribute, self._fallback_default)
+
+        return value
+
+    def __set__(self, instance, value):
+        assert self.overridable, "Cannot set a non-overridable host field"
+        return super().__set__(instance, value)
+
+
+class KeyField(DBField):
+    def __init__(self, listing: typing.Mapping, default=None, autocreate=False, **kwargs):
+        if default is not None and not isinstance(default, str) and not isinstance(default, int):
+            key = getattr(default, "key", None)
+            if not key:
+                raise ValueError("Only str, int, or instances with keys are supported")
+
+            default = key
+
+        super().__init__(default=default, autocreate=autocreate, **kwargs)
+        self.listing = listing
+
+    def __set_name__(self, owner: 'Component', name):
+        """
+        Called when descriptor is first assigned to the class.
+
+        Args:
+            owner (object): The component classF on which this is set
+            name (str): The name that was used to set the DBField.
+        """
+        slot_name = owner.slot or owner.name
+        self._key = f"{slot_name}::{name}_key"
+        owner.add_field(name, self)
+
+    def __get__(self, instance, owner):
+        """
+        Called when the attrkey is retrieved from the instance.
+
+        """
+        key = super().__get__(instance, owner)
+        return self.listing.get(key)
+
+    def __set__(self, instance, value):
+        if not isinstance(value, str) and not isinstance(value, int):
+            key = getattr(value, "key", None)
+            if not key:
+                raise ValueError("Only str, int, or instances with keys are supported")
+
+            value = key
+
+        return super().__set__(instance, value)
